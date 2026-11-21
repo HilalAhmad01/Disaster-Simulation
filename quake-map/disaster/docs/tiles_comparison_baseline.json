@@ -1,0 +1,94 @@
+[
+ {
+  "view": "2D z16 centre",
+  "pixels_drawn": 202509,
+  "differ_strict_%": 0.14,
+  "differ_1px_tolerance_%": 0.08,
+  "mean_abs_diff": 0.39,
+  "geojson_seconds": 0.07,
+  "tiles_seconds": 0.02,
+  "geojson_first_kB": 587,
+  "tiles_first_kB": 33,
+  "geojson_pan_kB": 551,
+  "tiles_pan_kB": 10,
+  "geojson_requests": 1,
+  "tile_requests": 6,
+  "path_check": [
+   [
+    "geojson"
+   ],
+   [
+    "tiles"
+   ]
+  ]
+ },
+ {
+  "view": "2D z15 wide",
+  "pixels_drawn": 233644,
+  "differ_strict_%": 1.27,
+  "differ_1px_tolerance_%": 0.78,
+  "mean_abs_diff": 3.28,
+  "geojson_seconds": 0.4,
+  "tiles_seconds": 0.04,
+  "geojson_first_kB": 1892,
+  "tiles_first_kB": 54,
+  "geojson_pan_kB": 0,
+  "tiles_pan_kB": 0,
+  "geojson_requests": 1,
+  "tile_requests": 6,
+  "path_check": [
+   [
+    "geojson"
+   ],
+   [
+    "tiles"
+   ]
+  ]
+ },
+ {
+  "view": "3D z15.5 pitch 60",
+  "pixels_drawn": 317908,
+  "differ_strict_%": 1.48,
+  "differ_1px_tolerance_%": 0.09,
+  "mean_abs_diff": 2.39,
+  "geojson_seconds": 1.17,
+  "tiles_seconds": 0.08,
+  "geojson_first_kB": 5517,
+  "tiles_first_kB": 68,
+  "geojson_pan_kB": 0,
+  "tiles_pan_kB": 0,
+  "geojson_requests": 1,
+  "tile_requests": 14,
+  "path_check": [
+   [
+    "geojson"
+   ],
+   [
+    "tiles"
+   ]
+  ]
+ },
+ {
+  "view": "3D z14.2 pitch 50",
+  "pixels_drawn": 196681,
+  "differ_strict_%": 4.61,
+  "differ_1px_tolerance_%": 1.73,
+  "mean_abs_diff": 7.07,
+  "geojson_seconds": 0.03,
+  "tiles_seconds": 0.12,
+  "geojson_first_kB": 8534,
+  "tiles_first_kB": 175,
+  "geojson_pan_kB": 0,
+  "tiles_pan_kB": 0,
+  "geojson_requests": 1,
+  "tile_requests": 13,
+  "path_check": [
+   [
+    "geojson"
+   ],
+   [
+    "tiles"
+   ]
+  ]
+ }
+]

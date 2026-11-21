@@ -8,7 +8,7 @@ from overture import fetch_buildings, latest_release
 from places import reverse_name
 from areas import Registry
 from jobs import Jobs
-import exposure, responder_layer, report, confidence, hazards, re
+import exposure, responder_layer, report, confidence, hazards, re, tiles
 import base64
 
 here = pathlib.Path(__file__).resolve().parent
@@ -66,6 +66,7 @@ class State:
         self.mc, self.mc_jobs = {}, {}              # run number -> uncertainty report / job id
         self.layer = None                           # responder layer for the active model (facilities, roads)
         self.report_img, self.last_dispatch = {}, {}   # run -> browser map image (bytes) / last dispatch list
+        self.tile_state = {}                        # area id -> {"state": building|ready|error|unavailable, "version", "error"}
         self.load_default()
 
     def load_default(self):
@@ -89,7 +90,32 @@ class State:
         with self.lock:
             self.model, self.active_id, self.layer = m, aid, None
         self.registry.touch(aid)
+        self.ensure_tiles(aid, m)
         return m
+
+    def ensure_tiles(self, aid, model):
+        """Make sure the area's static vector tiles exist and are current; builds them in the background otherwise."""
+        if tiles.tippecanoe_path() is None:
+            self.tile_state[aid] = {"state": "unavailable", "error": "tippecanoe is not installed"}
+            return
+        path, ver = tiles.tile_path(self.data, aid), tiles.version_of(model.g)
+        m = tiles.meta(path)
+        if m and m["version"] == ver:
+            self.tile_state[aid] = {"state": "ready", "version": ver}
+            return
+        if self.tile_state.get(aid, {}).get("state") == "building":
+            return
+        self.tile_state[aid] = {"state": "building", "version": ver}
+        def work(job):
+            try:
+                job.update(0.1, "Cutting vector tiles…")
+                tiles.build(model.g, path)
+                self.tile_state[aid] = {"state": "ready", "version": ver}
+            except Exception as ex:
+                self.tile_state[aid] = {"state": "error", "error": str(ex)[:200]}
+                raise
+            return {"area": aid}
+        self.jobs.submit("tiles", work)
 
     def start_uncertainty(self, model, run_id, deterministic):
         """Monte Carlo for the run just made, as a background job on a snapshot of that run."""
@@ -323,6 +349,39 @@ def create_app(data_dir=None):
             return {"assignments": res}
         except ValueError as ex:
             raise HTTPException(409, str(ex))
+
+    # ---- static vector tiles (Phase 6.1) ----
+    @app.get("/api/tiles/status")
+    def tiles_status():
+        aid = st.active_id
+        s = st.tile_state.get(aid, {"state": "unavailable"}) if aid else {"state": "unavailable"}
+        out = {"state": s["state"], "area": aid}
+        if s["state"] == "ready":
+            out.update(url=f"/tiles/{aid}/{{z}}/{{x}}/{{y}}.pbf?v={s['version']}", minzoom=tiles.MINZ, maxzoom=tiles.MAXZ, layer=tiles.LAYER,
+                       buildings=len(st.model.g))
+        elif "error" in s:
+            out["error"] = s["error"]
+        return out
+
+    @app.get("/tiles/{aid}/{z}/{x}/{y}.pbf")
+    def tile(aid: str, z: int, x: int, y: int):
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", aid):
+            raise HTTPException(404, "Unknown area.")
+        p = tiles.tile_path(st.data, aid)
+        if not p.exists():
+            raise HTTPException(404, "No tiles for this area.")
+        data = tiles.read_tile(p, z, x, y)
+        if data is None:
+            return Response(status_code=204)
+        return Response(data, media_type="application/x-protobuf", headers={"Content-Encoding": "gzip", "Cache-Control": "public, max-age=31536000, immutable"})
+
+    @app.get("/api/runattrs/{run}")
+    def run_attrs(run: int):
+        """Damage class and collapse chance of every building for the run on the map, as digit strings indexed by feature id."""
+        m = st.need()
+        if run != m.run_id or m.last is None:
+            raise HTTPException(409, "These results are out of date. Run the simulation again.")
+        return tiles.run_attrs(m.last)
 
     # ---- other hazards (Phase 7) ----
     HZ = hazards.registry()

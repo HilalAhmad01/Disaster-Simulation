@@ -142,3 +142,57 @@ def test_flood_upload_run_and_validation(client, tmp_path):
     r = client.post("/api/hazard/flood", json={"raster": "scen1", "scale": 1.0})
     assert r.status_code == 200 and r.json()["summary"]["flooded_buildings"] > 0
     assert client.post("/api/hazard/flood", json={"raster": "../x"}).status_code == 404
+
+# ---------------- vector tiles ----------------
+@pytest.fixture()
+def tiled_client(tmp_path, monkeypatch):
+    import tiles
+    if tiles.tippecanoe_path() is None:
+        pytest.skip("tippecanoe not installed")
+    monkeypatch.setenv("VS30_TIF", str(tmp_path / "none.tif"))
+    import app as appmod
+    from simulate import Model
+    c = TestClient(appmod.create_app(tmp_path))
+    st = c.app.state.st
+    st.model, st.active_id = Model(synthetic_exposure(500), data_dir=tmp_path), "synth"
+    st.ensure_tiles("synth", st.model)
+    for _ in range(200):
+        if st.tile_state["synth"]["state"] != "building":
+            break
+        time.sleep(0.1)
+    return c
+
+def test_tiles_are_built_served_and_carry_ids(tiled_client):
+    import gzip, mapbox_vector_tile as mvt, math
+    s = tiled_client.get("/api/tiles/status").json()
+    assert s["state"] == "ready" and s["layer"] == "bld" and s["buildings"] == 500 and "{z}" in s["url"]
+    lat, lon, z = 28.575, 77.33, 14
+    x, y = int((lon + 180) / 360 * 2 ** z), int((1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * 2 ** z)
+    r = tiled_client.get(s["url"].replace("{z}", str(z)).replace("{x}", str(x)).replace("{y}", str(y)))
+    assert r.status_code == 200 and r.headers["content-encoding"] == "gzip" and "immutable" in r.headers["cache-control"]
+    feats = mvt.decode(gzip.decompress(r.content) if r.content[:2] == b"\x1f\x8b" else r.content)["bld"]["features"]
+    assert len(feats) > 0 and all(isinstance(f["id"], int) and "levels" in f["properties"] for f in feats)
+    assert tiled_client.get("/tiles/synth/14/0/0.pbf").status_code == 204
+    assert tiled_client.get("/tiles/nope/14/0/0.pbf").status_code == 404
+
+def test_run_attrs_match_the_run_table(tiled_client):
+    d = tiled_client.post("/api/simulate", json={"lat": 28.575, "lon": 77.33, "depth_km": 10, "magnitude": 7.0, "uncertainty": False}).json()
+    a = tiled_client.get(f"/api/runattrs/{d['run']}").json()
+    m = tiled_client.app.state.st.model
+    assert a["n"] == 500 and len(a["cat"]) == 500 and len(a["pc"]) == 1500
+    assert [int(c) for c in a["cat"]] == m.last["cat"].tolist()
+    assert [int(a["pc"][3 * i:3 * i + 3]) / 100 for i in range(500)] == pytest.approx(m.last["p_collapse"].round(2).tolist(), abs=0.0051)
+    assert tiled_client.get(f"/api/runattrs/{d['run'] + 1}").status_code == 409
+
+def test_tiles_rebuild_when_the_area_changes(tiled_client):
+    st = tiled_client.app.state.st
+    import tiles
+    old = st.tile_state["synth"]["version"]
+    from simulate import Model
+    st.model = Model(synthetic_exposure(520), data_dir=st.data)
+    st.ensure_tiles("synth", st.model)
+    for _ in range(200):
+        if st.tile_state["synth"]["state"] != "building":
+            break
+        time.sleep(0.1)
+    assert st.tile_state["synth"]["state"] == "ready" and st.tile_state["synth"]["version"] != old and tiles.meta(tiles.tile_path(st.data, "synth"))["buildings"] == 520

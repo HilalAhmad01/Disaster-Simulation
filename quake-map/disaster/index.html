@@ -113,7 +113,7 @@ function typeLine(p){
 let map,epi,pins=[],lastRun=null,hot=[],selecting=null,selBox=null,runId=0,is3d=false,runNo=0,cov=null,ctl=null,moveT=null;
 fetch('/api/meta').then(r=>r.json()).then(m=>{
   if(m.empty){$('areaMsg').innerHTML='<b>No area loaded yet.</b> Press <b>Load a new area</b>, then drag a box over a place (up to about 30 km across). Buildings are downloaded once and saved for next time.'}
-  listAreas();
+  listAreas();initTiles();
   $('lon').value=m.center[0].toFixed(4);$('lat').value=m.center[1].toFixed(4);
   map=new maplibregl.Map({container:'map',center:m.center,zoom:11,maxPitch:75,preserveDrawingBuffer:true,style:{version:8,
     sources:{osm:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OpenStreetMap contributors'}},
@@ -184,7 +184,7 @@ function show(d){
     const BL=['bld3d','far3d','bld'];
     map.on('click',async e=>{   // details are fetched on click so the map only downloads what it draws
       if(e.originalEvent.shiftKey||picking||selecting)return;
-      const f=map.queryRenderedFeatures(e.point,{layers:BL.filter(id=>map.getLayoutProperty(id,'visibility')!=='none')})[0];
+      const f=map.queryRenderedFeatures(e.point,{layers:['bldv-3d','bldv-2d','bld3d','far3d','bld'].filter(id=>map.getLayer(id)&&map.getLayoutProperty(id,'visibility')!=='none')})[0];
       if(!f||f.id==null)return;
       const pop=new maplibregl.Popup().setLngLat(e.lngLat).setHTML('Loading…').addTo(map);
       try{
@@ -195,9 +195,10 @@ function show(d){
           `Est. occupants (${TOD[lastRun?lastRun.tod:'night']}): ${p.occupants} (about ${Math.round(p.risk)} at risk)`);
       }catch(err){pop.setHTML(esc(err.message))}
     });
-    BL.forEach(id=>{map.on('mouseenter',id,()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave',id,()=>map.getCanvas().style.cursor='')});
+    BL.concat(['bldv-3d','bldv-2d']).forEach(id=>{map.on('mouseenter',id,()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave',id,()=>map.getCanvas().style.cursor='')});
   }
   drawRupture(d.rupture||d.track);
+  tileMode=false;syncVis();setupTiles(d);
   setTimeout(()=>{prepareWaves(d);shakeNow(d.summary.max_mmi||0)},0);
   pins.forEach(m=>m.remove());pins=[];hot=[];$('hots').innerHTML='';
   const s=d.summary;
@@ -458,6 +459,7 @@ async function pollJob(id,m){
   }
 }
 function applyArea(d){
+  tileInfo=null;tileMode=false;tileAttrs=null;lastData=null;if(map&&map.getSource('bldv'))removeTileLayers();setTimeout(initTiles,500);
   uncTok++;runId++;runNo=0;resetBld();pins.forEach(p=>p.remove());pins=[];hot=[];lastRun=null;$('hots').innerHTML='';$('out').hidden=true;
   ['cells','bld','far','rup'].forEach(id=>{const src=map.getSource(id);if(src)src.setData({type:'FeatureCollection',features:[]})});
   map.fitBounds([[d.bounds[0],d.bounds[1]],[d.bounds[2],d.bounds[3]]],{padding:40,duration:800});
@@ -529,11 +531,11 @@ const EMPTY={type:'FeatureCollection',features:[]};
 const h3=()=>$('shrink').checked?['*',['get','levels'],3,['-',1,['*',.8,['get','pc']]]]:['*',['get','levels'],3];
 function set3d(on){
   is3d=on;resetBld();$('v3d').textContent=on?'Back to 2D view':'Switch to 3D view';$('v3d').classList.toggle('on',on);
-  if(map.getLayer('bld3d')){map.setLayoutProperty('bld','visibility',on?'none':'visible');map.setLayoutProperty('bld3d','visibility',on?'visible':'none');map.setLayoutProperty('far3d','visibility',on?'visible':'none');if(!on)map.getSource('far').setData(EMPTY)}
+  if(map.getLayer('bld3d')){syncVis();if(!on)map.getSource('far').setData(EMPTY)}
   map.easeTo(on?{pitch:60,bearing:-20,zoom:Math.max(map.getZoom(),15.5),duration:900}:{pitch:0,bearing:0,duration:700});
 }
 $('v3d').onclick=()=>{if(map)set3d(!is3d)};
-$('shrink').onchange=()=>{if(map&&map.getLayer('bld3d')){map.setPaintProperty('bld3d','fill-extrusion-height',h3());map.setPaintProperty('far3d','fill-extrusion-height',h3())}};
+$('shrink').onchange=()=>{if(map&&map.getLayer('bld3d')){map.setPaintProperty('bld3d','fill-extrusion-height',h3());map.setPaintProperty('far3d','fill-extrusion-height',h3());if(map.getLayer('bldv-3d'))map.setPaintProperty('bldv-3d','fill-extrusion-height',h3t(),{validate:false})}};
 function dataNotes(s){
   const n=[];
   if(s.hazard_note)n.push('<b>'+esc(s.hazard_note)+'</b>');
@@ -557,6 +559,47 @@ async function nameAreas(run,refs,cardHtml,rowHtml){
     }catch(e){}
   }
 }
+
+// ---- static vector tiles (tippecanoe/PMTiles) with per-run attributes as digit strings indexed by feature id ----
+const wantTiles=new URLSearchParams(location.search).get('tiles')!=='0';
+let tileInfo=null,tileMode=false,tileAttrs=null,tilePoll=null;
+const catExpr=arr=>['match',['at',['id'],['literal',arr]],0,COL[0],1,COL[1],2,COL[2],COL[3]];   // 'at' on a numeric array is ~10x faster than slicing a string
+const pcExpr=arr=>['at',['id'],['literal',arr]];
+const h3t=()=>$('shrink').checked&&tileAttrs?['*',['get','levels'],3,['-',1,['*',.8,pcExpr(tileAttrs.pcArr)]]]:['*',['get','levels'],3];
+async function initTiles(){
+  clearTimeout(tilePoll);if(!wantTiles)return;
+  try{const s=await (await fetch('/api/tiles/status')).json();
+    if(s.state==='ready'){tileInfo=s;if(lastData)setupTiles(lastData)}
+    else if(s.state==='building')tilePoll=setTimeout(initTiles,3000)}catch(e){}
+}
+function addTileLayers(){
+  if(map.getSource('bldv'))return;
+  map.addSource('bldv',{type:'vector',tiles:[location.origin+tileInfo.url],minzoom:tileInfo.minzoom,maxzoom:tileInfo.maxzoom});
+  const L=tileInfo.layer;
+  map.addLayer({id:'bldv-2d',type:'fill',source:'bldv','source-layer':L,minzoom:15,layout:{visibility:'none'},paint:{'fill-color':COL[3],'fill-opacity':.85}});
+  map.addLayer({id:'bldv-line',type:'line',source:'bldv','source-layer':L,minzoom:15,layout:{visibility:'none'},paint:{'line-color':'#1c2630','line-width':.5,'line-opacity':.5}});
+  map.addLayer({id:'bldv-3d',type:'fill-extrusion',source:'bldv','source-layer':L,minzoom:13.5,layout:{visibility:'none'},paint:{'fill-extrusion-color':COL[3],'fill-extrusion-height':3,'fill-extrusion-base':0,'fill-extrusion-opacity':.92}});
+}
+function removeTileLayers(){['bldv-3d','bldv-line','bldv-2d'].forEach(i=>{if(map.getLayer(i))map.removeLayer(i)});if(map.getSource('bldv'))map.removeSource('bldv')}
+function syncVis(){
+  const geo=!tileMode,v=(id,on)=>{if(map.getLayer(id))map.setLayoutProperty(id,'visibility',on?'visible':'none')};
+  v('bld',geo&&!is3d);v('bld-line',geo&&!is3d);v('bld3d',geo&&is3d);v('far3d',geo&&is3d);
+  v('bldv-2d',tileMode&&!is3d);v('bldv-line',tileMode&&!is3d);v('bldv-3d',tileMode&&is3d);
+}
+async function setupTiles(d){
+  if(!tileInfo||!map)return;
+  try{
+    addTileLayers();
+    const r=await fetch('/api/runattrs/'+d.run);if(!r.ok)return;const a=await r.json();
+    if(d.run!==runNo)return;                                   // a newer run replaced this one
+    a.catArr=Array.from(a.cat,Number);a.pcArr=new Array(a.n);for(let i=0;i<a.n;i++)a.pcArr[i]=+a.pc.substr(3*i,3)/100;
+    tileAttrs=a;
+    const col=catExpr(a.catArr);
+    const nv={validate:false};   // our own expressions; validating every element of a 483k-entry array is wasted work
+    map.setPaintProperty('bldv-2d','fill-color',col,nv);map.setPaintProperty('bldv-3d','fill-extrusion-color',col,nv);map.setPaintProperty('bldv-3d','fill-extrusion-height',h3t(),nv);
+    tileMode=true;resetBld();syncVis();
+  }catch(e){console.warn('Vector tiles unavailable, using GeoJSON:',e);tileMode=false;syncVis()}
+}
 // ---- building loading: fetch a padded box once, skip requests while the view stays inside what was loaded ----
 const PAD=0.25;                          // extra margin on each side of the view
 const dist=(a,b)=>Math.hypot(a[1]-b[1],(a[0]-b[0])*Math.cos(b[1]*Math.PI/180));   // [lon,lat], degrees of latitude
@@ -570,7 +613,7 @@ function covered(){
   return [[v[0],v[1]],[v[0],v[3]],[v[2],v[1]],[v[2],v[3]]].every(p=>dist(p,cov.c)<=cov.r);   // view inside the complete circle
 }
 async function loadBld(){
-  if(!map||!map.getSource('bld')||map.getZoom()<(is3d?13.5:15)||covered())return;
+  if(!map||tileMode||!map.getSource('bld')||map.getZoom()<(is3d?13.5:15)||covered())return;
   if(ctl)ctl.abort();
   const my=ctl=new AbortController(),b=map.getBounds(),c=map.getCenter();
   const dx=(b.getEast()-b.getWest())*PAD,dy=(b.getNorth()-b.getSouth())*PAD;
