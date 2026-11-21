@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+geopandas
+osmnx
+scipy
+numpy
+pandas
+shapely
+pyarrow
+rasterio
+overturemaps

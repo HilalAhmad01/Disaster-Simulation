@@ -1,0 +1,11 @@
+# data stays out of git; rebuild with tools/get_*.py
+quake-map/disaster/data/*
+!quake-map/disaster/data/.gitkeep
+__pycache__/
+.pytest_cache/
+*.parquet
+*.tif
+.venv/
+venv/
+.venv-verify/
+*.pyc
