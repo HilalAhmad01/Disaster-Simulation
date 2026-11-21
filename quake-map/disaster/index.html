@@ -5,33 +5,38 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-:root{--ink:#1c2630;--paper:#f2f4f5;--line:#cfd6db;--red:#d7263d;--yel:#f2b705;--grn:#3aa655;--blu:#3b7dd8}
+:root{--ink:#1c2630;--paper:#f2f4f5;--line:#cfd6db;--card:#fff;--red:#d7263d;--yel:#f2b705;--grn:#3aa655;--blu:#3b7dd8;--muted:#5b6874;color-scheme:light}
+:root[data-theme=dark]{--ink:#e6edf3;--paper:#161b22;--line:#30363d;--card:#0d1117;--muted:#9aa7b4;color-scheme:dark}
+body{background:var(--paper)}
 *{box-sizing:border-box}html,body{height:100%;margin:0;font:15px/1.4 Barlow,system-ui,sans-serif;color:var(--ink)}
 #app{display:flex;height:100%}
 aside{width:320px;flex:none;background:var(--paper);border-right:1px solid var(--line);overflow:auto;padding:16px}
 #map{flex:1}
 h1{font-size:20px;margin:0 0 12px;font-weight:700}h2{font-size:15px;margin:18px 0 6px}
 label{display:block;font-weight:500;margin:8px 0 2px}
-input,select{width:100%;padding:7px 8px;border:1px solid var(--line);border-radius:4px;font:inherit}
+input,select{width:100%;padding:7px 8px;border:1px solid var(--line);border-radius:4px;font:inherit;background:var(--card);color:var(--ink)}
 .row{display:flex;gap:8px}.row>div{flex:1}
-button{width:100%;margin-top:12px;padding:10px;background:var(--ink);color:#fff;border:0;border-radius:4px;font:600 15px Barlow,sans-serif;cursor:pointer}
+button{width:100%;margin-top:12px;padding:10px;background:var(--ink);color:var(--paper);border:0;border-radius:4px;font:600 15px Barlow,sans-serif;cursor:pointer}
 button:disabled{opacity:.6;cursor:wait}
-.alt{background:#fff;color:var(--ink);border:1px solid var(--ink)}.alt.on{background:var(--yel)}
+.alt{background:var(--card);color:var(--ink);border:1px solid var(--ink)}.alt.on{background:var(--yel);color:#1c2630}
 .chk{display:flex;gap:8px;align-items:center;font-weight:400;margin:10px 0 0}.chk input{width:auto}
 .selbox{position:absolute;border:2px dashed var(--ink);background:rgba(28,38,48,.12);pointer-events:none;z-index:5}
 .prog{height:6px;background:var(--line);border-radius:3px;margin-top:6px;overflow:hidden}.prog i{display:block;height:100%;background:var(--ink);width:0;transition:width .3s}
 details{margin:10px 0 0}summary{cursor:pointer;font-weight:500}
 .fac-dot{width:11px;height:11px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:-1px}
-.rt{width:auto;margin:4px 0 0 6px;padding:2px 8px;font-size:12px;background:#fff;color:var(--ink);border:1px solid var(--ink)}
+.rt{width:auto;margin:4px 0 0 6px;padding:2px 8px;font-size:12px;background:var(--card);color:var(--ink);border:1px solid var(--ink)}
 table.d{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}table.d td,table.d th{padding:3px 4px;border-bottom:1px solid var(--line);text-align:left}
-.hint{color:#5b6874;font-size:13px;margin:6px 0 0}
+.hint{color:var(--muted);font-size:13px;margin:6px 0 0}
 .stat{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--line)}
 .legend span{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:6px;vertical-align:-1px}
-.hot{display:block;width:100%;text-align:left;background:#fff;color:var(--ink);border:1px solid var(--line);margin:6px 0 0;font-weight:500;padding:8px}
+.hot{display:block;width:100%;text-align:left;background:var(--card);color:var(--ink);border:1px solid var(--line);margin:6px 0 0;font-weight:500;padding:8px}
 .hot b{color:var(--red)}
 .pin{width:26px;height:26px;border-radius:50%;background:var(--red);color:#fff;font-weight:700;display:grid;place-items:center;border:2px solid #fff;cursor:pointer}
 .epi{width:18px;height:18px;background:var(--ink);border:3px solid #fff;transform:rotate(45deg)}
-.maplibregl-popup-content{font:14px/1.4 Barlow,sans-serif;padding:10px 12px}.maplibregl-popup-content b{font-weight:600}
+.maplibregl-popup-content{font:14px/1.4 Barlow,sans-serif;padding:10px 12px;background:var(--paper);color:var(--ink)}.maplibregl-popup-tip{border-top-color:var(--paper)!important;border-bottom-color:var(--paper)!important}
+.mapctl{position:absolute;top:10px;right:10px;z-index:4;display:flex;gap:6px}.mapctl button{width:auto;margin:0;padding:6px 10px;font-size:13px}
+.shaking{will-change:transform}
+#timeline{display:flex;gap:8px;align-items:center;margin-top:8px}#timeline input[type=range]{padding:0}#tlT{white-space:nowrap;font-size:13px}.maplibregl-popup-content b{font-weight:600}
 #err{color:var(--red);margin-top:8px}
 @media(max-width:700px){#app{flex-direction:column-reverse}aside{width:100%;height:45%}}
 </style></head><body><div id="app">
@@ -56,6 +61,8 @@ table.d{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}table.
 <div><label for="rake">Rake (&deg;)</label><input id="rake" type="number" min="-180" max="180" step="any" placeholder="auto"></div></div>
 <p class="hint">Rake: 0 strike-slip, 90 reverse (thrust), -90 normal.</p></details>
 <button id="pick" type="button" class="alt">Pick epicentre on map</button><p class="hint">Or drag the diamond marker, or shift-click the map. The epicentre can be outside the city.</p>
+<label class="chk"><input type="checkbox" id="shake"> Shake the screen when the quake runs</label>
+<p class="hint" id="shakeHint">Off by default. Brief and gentle; disabled if your system asks for reduced motion.</p>
 <button id="run">Run simulation</button><div id="err" role="alert"></div>
 <div id="out" hidden>
 <button id="v3d" type="button" class="alt">Switch to 3D view</button>
@@ -63,6 +70,12 @@ table.d{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}table.
 <p class="hint">3D shows each building at about 3 m per storey. The lowering option is a visual cue for expected collapse, not a prediction of how any building falls.</p>
 <button id="dl" type="button" class="alt">Save map as image</button>
 <div class="row"><div><button id="pdf" type="button" class="alt">Report (PDF)</button></div><div><button id="csv" type="button" class="alt">Table (CSV)</button></div></div><p class="hint" id="repMsg">The report has the scenario, summary with ranges, priorities, access, dispatch order, methods and caveats.</p><p class="hint">Drag a box to choose what to save. A click without dragging saves the whole view.</p>
+<div id="waveBox" hidden><h2>Seismic waves</h2>
+<button id="play" type="button" class="alt">Play wave animation</button>
+<div id="timeline"><input type="range" id="tl" min="0" max="100" value="0" aria-label="Time since the earthquake"><span id="tlT">0 s</span></div>
+<div class="row"><div><label for="delay">Alert delay (s)</label><input id="delay" type="number" min="0" max="60" value="5"></div><div><label for="detR">Nearest sensor (km)</label><input id="detR" type="number" min="1" max="200" value="10"></div></div>
+<label class="chk"><input type="checkbox" id="warnOn"> Show warning time (colours)</label>
+<p class="hint">Warning time = S-wave arrival minus (time for the P wave to reach a sensor + alert delay). P about 6 km/s, S about 3.5 km/s, distances from the hypocentre. A simple model, not a real alert system.</p></div>
 <h2>Summary</h2><div id="sum"></div><details id="conf"><summary>How much to trust this</summary><div id="confBody"><p class="hint">Loading…</p></div></details><div id="unc"></div>
 <h2>Legend</h2><div class="legend">
 <div><span style="background:var(--red)"></span>Severe damage or collapse risk</div>
@@ -79,7 +92,7 @@ table.d{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}table.
 <h2>Dispatch order</h2><div class="row"><div><label for="tFire">Fire teams</label><input id="tFire" type="number" min="0" max="50" value="2"></div><div><label for="tPol">Police</label><input id="tPol" type="number" min="0" max="50" value="2"></div><div><label for="tAmb">Ambulances</label><input id="tAmb" type="number" min="0" max="50" value="2"></div></div>
 <button id="disp" type="button" class="alt">Suggest dispatch order</button><div id="dispOut"></div></div></div>
 <p class="hint">Estimates for planning, not confirmed damage. Zoom in past street level to see individual buildings.</p>
-</aside><div id="map"></div></div>
+</aside><div id="map"><div class="mapctl"><button id="theme" type="button" class="alt" title="Light or dark map">Dark</button></div></div></div>
 <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script>window.maplibregl||document.write('<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"><\/script>')</script>
 <script>
@@ -106,7 +119,7 @@ fetch('/api/meta').then(r=>r.json()).then(m=>{
     sources:{osm:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OpenStreetMap contributors'}},
     layers:[{id:'osm',type:'raster',source:'osm',paint:{'raster-saturation':-0.7,'raster-opacity':.8}}]}});
   map.on('click',e=>{if(!picking&&!e.originalEvent.shiftKey)return;$('lon').value=e.lngLat.lng.toFixed(4);$('lat').value=e.lngLat.lat.toFixed(4);placeEpi();if(picking)setTimeout(()=>{picking=false;pickUI()},0)});
-  map.on('load',placeEpi);map.on('moveend',()=>{clearTimeout(moveT);moveT=setTimeout(loadBld,150)});
+  map.on('load',()=>{placeEpi();let t='light';try{t=localStorage.getItem('quake-theme')||(matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch(e){}setTheme(t)});map.on('moveend',()=>{clearTimeout(moveT);moveT=setTimeout(loadBld,150)});
 }).catch(e=>{$('err').textContent='The map failed to start: '+e.message+'. Check your connection or ad-blocker, then reload.'});
 function placeEpi(){const p=[+$('lon').value,+$('lat').value];
   if(!epi){const el=document.createElement('div');el.style.cursor='grab';el.innerHTML='<div class="epi"></div>';epi=new maplibregl.Marker({element:el,draggable:true}).setLngLat(p).addTo(map);epi.on('dragend',()=>{const l=epi.getLngLat();$('lon').value=l.lng.toFixed(4);$('lat').value=l.lat.toFixed(4)})}else epi.setLngLat(p)}
@@ -185,6 +198,7 @@ function show(d){
     BL.forEach(id=>{map.on('mouseenter',id,()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave',id,()=>map.getCanvas().style.cursor='')});
   }
   drawRupture(d.rupture||d.track);
+  setTimeout(()=>{prepareWaves(d);shakeNow(d.summary.max_mmi||0)},0);
   pins.forEach(m=>m.remove());pins=[];hot=[];$('hots').innerHTML='';
   const s=d.summary;
   $('sum').innerHTML=[['Buildings assessed',s.buildings],['Severe damage or collapse risk',s.severe],['Moderate damage or worse',s.heavy],
@@ -339,6 +353,64 @@ async function getReport(kind){
   $('pdf').disabled=$('csv').disabled=false;
 }
 $('pdf').onclick=()=>getReport('pdf');$('csv').onclick=()=>getReport('csv');
+
+// ---- extras: seismic waves and warning time, dark theme, shake effect ----
+const VP=6.0,VS=3.5;
+function hyp(c){const d=haversineKm(lastRun.lat,lastRun.lon,c[1],c[0]);return Math.hypot(d,lastRun.depth)}
+function haversineKm(la1,lo1,la2,lo2){const p=Math.PI/180,a=Math.sin((la2-la1)*p/2)**2+Math.cos(la1*p)*Math.cos(la2*p)*Math.sin((lo2-lo1)*p/2)**2;return 12742*Math.asin(Math.sqrt(a))}
+function warnSeconds(c){const depth=lastRun?lastRun.depth:15,tdet=Math.hypot(+$('detR').value,depth)/VP+(+$('delay').value||0);return Math.max(0,hyp(c)/VS-tdet)}
+function circlePoly(lon,lat,rKm,n=72){const pts=[];for(let i=0;i<=n;i++){const a=i/n*2*Math.PI,dx=rKm*Math.sin(a)/(111.19*Math.cos(lat*Math.PI/180)),dy=rKm*Math.cos(a)/111.19;pts.push([lon+dx,lat+dy])}return pts}
+function ensureWaveLayers(){
+  if(map.getSource('waves'))return;
+  map.addSource('waves',{type:'geojson',data:EMPTY});map.addSource('warn',{type:'geojson',data:EMPTY});
+  map.addLayer({id:'warn-c',type:'circle',source:'warn',layout:{visibility:'none'},paint:{'circle-radius':['interpolate',['linear'],['zoom'],11,6,14,16,17,40],'circle-opacity':.7,'circle-blur':.3,
+    'circle-color':['interpolate',['linear'],['get','sec'],0,'#d7263d',5,'#e67e22',10,'#f2b705',20,'#a6c23b',40,'#3aa655']}});
+  map.addLayer({id:'wave-s',type:'line',source:'waves',filter:['==',['get','w'],'S'],paint:{'line-color':'#d7263d','line-width':3}});
+  map.addLayer({id:'wave-p',type:'line',source:'waves',filter:['==',['get','w'],'P'],paint:{'line-color':'#2c5aa0','line-width':2,'line-dasharray':[3,2]}});
+}
+function waveRadius(v,t,depth){return Math.sqrt(Math.max(0,(v*t)**2-depth**2))}
+function drawWaves(t){
+  if(!lastRun||!lastData)return;ensureWaveLayers();
+  const lon=lastRun.lon,lat=lastRun.lat,depth=lastRun.depth,feats=[];
+  for(const [w,v] of [['P',VP],['S',VS]]){const r=waveRadius(v,t,depth);if(r>0.05)feats.push({type:'Feature',properties:{w},geometry:{type:'LineString',coordinates:circlePoly(lon,lat,r)}})}
+  map.getSource('waves').setData({type:'FeatureCollection',features:feats});$('tl').value=t;$('tlT').textContent=Math.round(t)+' s';
+}
+function prepareWaves(d){
+  if(hazard!=='earthquake'){$('waveBox').hidden=true;return}
+  $('waveBox').hidden=false;ensureWaveLayers();
+  const far=Math.max(...d.cells.features.map(f=>hyp(f.geometry.coordinates)));timeEnd=Math.max(20,Math.ceil(far/VS*1.1));
+  $('tl').max=timeEnd;$('tl').value=0;$('tlT').textContent='0 s';
+  refreshWarn();map.getSource('waves').setData(EMPTY);
+}
+let timeEnd=60,playing=false,raf=0;
+function refreshWarn(){
+  if(!lastData||!map.getSource('warn'))return;
+  const f=lastData.cells.features.map(c=>({type:'Feature',geometry:c.geometry,properties:{sec:Math.round(warnSeconds(c.geometry.coordinates))}}));
+  map.getSource('warn').setData({type:'FeatureCollection',features:f});
+  map.setLayoutProperty('warn-c','visibility',$('warnOn').checked?'visible':'none');
+}
+['delay','detR'].forEach(i=>$(i).addEventListener('change',refreshWarn));$('warnOn').onchange=refreshWarn;
+$('tl').oninput=()=>{playing=false;cancelAnimationFrame(raf);$('play').textContent='Play wave animation';drawWaves(+$('tl').value)};
+$('play').onclick=()=>{
+  if(playing){playing=false;cancelAnimationFrame(raf);$('play').textContent='Play wave animation';return}
+  playing=true;$('play').textContent='Pause';let t0=performance.now(),from=+$('tl').value>=timeEnd?0:+$('tl').value;const speed=timeEnd/12;   // whole animation takes about 12 s
+  const step=now=>{if(!playing)return;const t=from+(now-t0)/1000*speed;if(t>=timeEnd){drawWaves(timeEnd);playing=false;$('play').textContent='Play wave animation';return}drawWaves(t);raf=requestAnimationFrame(step)};
+  raf=requestAnimationFrame(step);
+};
+// dark theme (remembered in localStorage when available)
+function setTheme(t){
+  document.documentElement.dataset.theme=t;$('theme').textContent=t==='dark'?'Light':'Dark';
+  try{localStorage.setItem('quake-theme',t)}catch(e){}
+  if(map&&map.getLayer('osm')){map.setPaintProperty('osm','raster-brightness-max',t==='dark'?0.32:1);map.setPaintProperty('osm','raster-brightness-min',0);map.setPaintProperty('osm','raster-contrast',t==='dark'?0.15:0)}
+}
+$('theme').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
+// shake effect: short, decaying jitter scaled to the shaking strength; off by default and off for reduced-motion users
+const reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+if(reduce){$('shake').disabled=true;$('shakeHint').textContent='Disabled because your system asks for reduced motion.'}
+function shakeNow(mmi){
+  if(!$('shake').checked||reduce)return;const el=$('map');el.classList.add('shaking');const amp=Math.max(0,Math.min(7,(mmi-4)*1.3)),t0=performance.now(),dur=1100;
+  const f=now=>{const k=(now-t0)/dur;if(k>=1){el.style.transform='';el.classList.remove('shaking');return}const a=amp*(1-k);el.style.transform=`translate(${(Math.random()*2-1)*a}px,${(Math.random()*2-1)*a}px)`;requestAnimationFrame(f)};requestAnimationFrame(f);
+}
 // ---- box selection: "png" saves a map image, "area" downloads buildings for that area ----
 $('dl').onclick=()=>{if(map){selecting=selecting==='png'?null:'png';selUI()}};
 $('area').onclick=()=>{if(map){selecting=selecting==='area'?null:'area';selUI()}};

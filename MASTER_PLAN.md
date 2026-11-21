@@ -516,64 +516,65 @@ In priority order: 0.1–0.3, then 1.1 (Google heights), 1.3 (population), 2.1 (
 
 ## 13. Progress checklist
 
+Status on 2026-11-21. `[x]` done and tested; `[~]` built and tested but a stated part is missing or a target was missed (see note); `[ ]` not done.
+Details: `quake-map/disaster/CHANGELOG.md`, `docs/validation.md`, `docs/calibration/README.md`.
+
 Phase 0
-- [ ] 0.1 git init + .gitignore + baseline commit
-- [ ] 0.2 server starts without data
-- [ ] 0.3 baseline harness + synthetic regression test
-- [ ] 0.4 area registry + clip rule + release check
-- [ ] 0.5 background jobs + progress UI
-- [ ] 0.6 (optional) region pre-download
+- [x] 0.1 git init + .gitignore + baseline commit
+- [x] 0.2 server starts without data
+- [x] 0.3 baseline harness + synthetic regression test
+- [x] 0.4 area registry + clip rule + release check
+- [x] 0.5 background jobs + progress UI
+- [x] 0.6 region pre-download (`tools/prefetch_region.py`; not run on a large region)
 
 Phase 1
-- [ ] 1.1 Google 2.5D heights → storeys, `levels_src`
-- [ ] 1.2 construction-type probabilities + mixed damage curves + per-type β
-- [ ] 1.3 GHS-POP matching + day/night occupancy + time-of-day input
-- [ ] 1.4 exposure checks + storey-height calibration documented
-- [ ] 1.5 (optional) ML attributes with spatial cross-validation
+- [~] 1.1 Google 2.5D heights -> storeys, `levels_src`. **Target missed:** 66.9% measured in Noida (> 80% wanted; 81.8% in the baseline box). Cause: 30% of footprints read < 2 m
+- [~] 1.2 construction-type probabilities + mixed damage curves + per-type beta. **Census shares are an assumed default, not looked up**
+- [~] 1.3 GHS-POP matching + day/night occupancy + time-of-day input. Night total within 2.2% of GHS-POP. **Time-of-day shares unverified against Hazus**
+- [~] 1.4 exposure checks + storey-height calibration (2.8 m). **+/-1 storey agreement 68.8% (target 70% missed)**; no imagery spot-check
+- [ ] 1.5 (optional) ML attributes: not built (storeys weak but optional; recorded as roadmap item)
 
 Phase 2
-- [ ] 2.1 BA08 matches OpenQuake (<1%) + standard deviations stored
-- [ ] 2.2 finite-fault Rjb (known strike) + ps2ff (unknown strike) + UI
-- [ ] 2.3 ported regional models + weighted mix by distance band, each checked against OpenQuake
-- [ ] 2.4 (optional) Vs30 override layer
+- [x] 2.1 BA08 matches OpenQuake (machine precision) + standard deviations stored. (Found and fixed a v1 normal/reverse offset swap)
+- [x] 2.2 finite-fault Rjb (known strike) + ps2ff (unknown strike) + UI
+- [~] 2.3 ported regional models (BSSA14, Sharma 2009; each < 1% of OpenQuake) + weighted mix by distance band. **Weights from one paper's IGP/Himalaya scores; Sharma's 0.2 is a judgement; Anbazhagan & Bajaj 2023 not read; the 2015 Gorkha MMI-in-Delhi comparison was not done**
+- [x] 2.4 Vs30 override layer
 
 Phase 3
-- [ ] 3.1 Nepal survey, ShakeMap and boundaries downloaded via scripts
-- [ ] 3.2 ward PGA (population-weighted) + σ
-- [ ] 3.3 class and damage-state mapping documented
-- [ ] 3.4 maximum-likelihood fit with grouping, shaking-uncertainty handling, bootstrap CIs, plots
-- [ ] 3.5 GEM/HAZUS comparison + final FRAG/BETA with provenance
-- [ ] 3.6 validation: held-out Nepal, Kathmandu (EMS), Türkiye 2023 (EMSR648) → docs/validation.md
+- [~] 3.1 downloads via scripts: ShakeMaps and EMS grading work; **Nepal survey and boundaries are manual/unavailable**
+- [~] 3.2 ward PGA (population-weighted) + sigma: code + tests, not run on real wards
+- [x] 3.3 class and damage-state mapping documented (column names to verify against the real data dictionary)
+- [~] 3.4 maximum-likelihood fit with grouping, shaking-uncertainty handling, bootstrap CIs, plots: built and recovers known curves; **not run on real data**
+- [ ] 3.5 GEM/HAZUS comparison + final FRAG/BETA with provenance: **not done** (no data; curves stay UNCALIBRATED placeholders; the decision rule and the loader are built)
+- [~] 3.6 validation: Turkiye 2023 (EMSR648) and Kathmandu (EMSR125) replayed with real data, **weak/inconclusive skill reported**; held-out Nepal districts not possible
 
 Phase 4
-- [ ] uncertainty.py Monte Carlo (between-event, correlated within-event, models, fragility, type, occupancy)
-- [ ] job + UI ranges + worst-case priorities + PNG footer
+- [x] uncertainty.py Monte Carlo (between-event, correlated within-event, models, fragility, type, occupancy). Fragility and occupancy spreads are assumptions
+- [x] job + UI ranges + worst-case priorities + PNG footer
 
 Phase 5
-- [ ] 5.1 facilities + facility damage
-- [ ] 5.2 road graph + widths
-- [ ] 5.3 debris blockage model documented + vectorised
-- [ ] 5.4 access map, routes, dispatch order
-- [ ] 5.5 casualties (HAZUS) + PAGER sanity check
+- [x] 5.1 facilities + facility damage
+- [x] 5.2 road graph + widths (speeds and widths are assumed tables)
+- [~] 5.3 debris blockage model documented + vectorised. **Constants are placeholders, not calibrated against the cited papers**
+- [x] 5.4 access map, routes, dispatch order
+- [~] 5.5 casualties + PAGER sanity check. **Rates and PAGER parameters are unverified (Hazus manual unreachable)**
 
 Phase 6
-- [ ] 6.1 vector tiles with pixel-diff check
-- [ ] 6.2 multi-city switcher
-- [ ] 6.3 responder report export
-- [ ] 6.4 confidence display
-- [ ] 6.5 (if needed) look-up-table fast model
+- [ ] 6.1 vector tiles with pixel-diff check: **not implemented** (tippecanoe unavailable; per-run attributes cannot join static tiles without feature-state; would not beat the current lossless path)
+- [x] 6.2 multi-city switcher (registry + UI)
+- [x] 6.3 responder report export (PDF via WeasyPrint, CSV)
+- [x] 6.4 confidence display
+- [x] 6.5 look-up-table fast model: not needed (Monte Carlo 26 s)
 
 Phase 7
-- [ ] 7.1 hazard interface (earthquake refactor, exact baseline match)
-- [ ] 7.2 flood module
-- [ ] 7.3 cyclone module
+- [x] 7.1 hazard interface (earthquake refactor, exact baseline match)
+- [~] 7.2 flood module (end to end on a test raster; **depth-damage curve is an unverified placeholder; no JRC map bundled**)
+- [~] 7.3 cyclone module (**wind fragility is a placeholder**)
 
 Phase 8
-- [ ] wave animation + warning times
-- [ ] dark theme
-- [ ] shake effect
-
----
+- [x] wave animation + warning times
+- [x] dark theme
+- [x] shake effect
 
 ## 14. Risks
 

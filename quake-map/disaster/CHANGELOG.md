@@ -85,3 +85,10 @@ curves are still the v1 placeholders until Phase 3.
 - `hazards/` interface (`intensity`, `damage`, `describe` + small hooks); the earthquake moved into `hazards/earthquake.py` with **identical numbers** (the saved baselines changed only
   by new summary keys: 66 insertions, 0 deletions). `Model.run_hazard(hazard, params)`. Flood (raster water depth, placeholder depth-damage curve, upload endpoint) and
   cyclone (Holland 1980 wind field along a track, placeholder wind fragility; 2.5 s for 483k buildings). Monte Carlo and casualties exist for earthquakes only.
+
+### Phase 8: visual extras
+- Seismic-wave animation (P ~6, S ~3.5 km/s from the hypocentre) with a timeline and a warning-time layer (S arrival minus P-detection time at a sensor + alert delay,
+  both settings); dark theme (remembered); shake effect (off by default, short, scaled to peak MMI, disabled for reduced-motion users).
+
+### Documentation
+- README rewritten to match reality (placeholder / unverified status table); docs/data_sources.md; decision D1 applied (root README is a pointer); D2 applied (set_precision).

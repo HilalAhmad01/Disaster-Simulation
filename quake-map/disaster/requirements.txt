@@ -1,5 +1,6 @@
 fastapi
 uvicorn[standard]
+httpx
 geopandas
 osmnx
 scipy
@@ -8,4 +9,11 @@ pandas
 shapely
 pyarrow
 rasterio
+pyproj
+networkx
 overturemaps
+weasyprint
+matplotlib
+tabulate
+pytest
+playwright   # only for browser smoke tests, optional
