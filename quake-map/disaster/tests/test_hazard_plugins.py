@@ -71,7 +71,7 @@ def test_flood_end_to_end_run_and_no_raster_error(model, tmp_path):
     s = r["summary"]
     assert s["hazard"] == "flood" and s["flooded_buildings"] > 0 and "casualties" not in s and s["people_at_risk"] > 0
     assert all(f["properties"]["dist_km"] is None for f in r["cells"]["features"]) and "depth_m" in r["cells"]["features"][0]["properties"]
-    assert "intensity" in model.last and "UNVERIFIED" in s["hazard_note"]
+    assert "intensity" in model.last and "JRC" in s["hazard_note"]
     with pytest.raises(ValueError):
         model.run_hazard(FL.FloodHazard(), {})
 
@@ -116,3 +116,11 @@ def test_fast_peak_gust_equals_brute_force_over_the_whole_track():
         fast = CY.peak_gust(blat, blon, tl, tn, heading, speed, dp, rmax)
         slow = CY.peak_gust(blat, blon, tl, tn, heading, speed, dp, rmax, fast=False)
         np.testing.assert_allclose(fast, slow, rtol=1e-3, atol=0.05)
+
+
+def test_flood_curve_is_the_jrc_asia_residential_curve():
+    """Values copied from the JRC workbook (Huizinga et al. 2017, 'Damage functions', ASIA, residential)."""
+    d, l = FL.depth_damage_curve()
+    np.testing.assert_allclose(d, [0, 0.5, 1, 1.5, 2, 3, 4, 5, 6])
+    np.testing.assert_allclose(l, [0, 0.3266, 0.4941, 0.6166, 0.7207, 0.8695, 0.9315, 0.9836, 1.0], atol=5e-5)
+    assert np.all(np.diff(l) > 0)

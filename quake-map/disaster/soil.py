@@ -1,4 +1,4 @@
-"""Soil stiffness (Vs30, m/s) at each building from the USGS Global Vs30 Mosaic (median GeoTIFF, ~900 m cells).
+"""Soil stiffness (Vs30, m/s) at each building from the USGS global Vs30 map (GeoTIFF, 30 arcsec = ~900 m cells: the Global Vs30 Mosaic, or the Heath et al. 2020 grid installed by tools/get_vs30.py).
 Put vs30_mosaic_median_30c.tif in data/rasters/ (data/ also works), or point the VS30_TIF environment variable at it.
 Without the file, a flat 250 m/s (soft alluvium) is used.
 """
@@ -81,4 +81,4 @@ def _mosaic_vs30(lat, lon, tif=None):
         return np.full(len(lat), FLAT), "flat (soil map has no land values here)"
     a[~ok] = np.nanmedian(a)
     v = bilinear(a, t.c, t.a, t.f, t.e, lon, lat)
-    return np.clip(v, 150, 1300), "USGS Global Vs30 Mosaic"
+    return np.clip(v, 150, 1300), "USGS global Vs30 map"

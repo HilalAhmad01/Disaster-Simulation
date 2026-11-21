@@ -3,14 +3,24 @@ a message and a result. The front end polls GET /api/jobs/{id} once per second."
 import itertools, threading, time, traceback
 from concurrent.futures import ThreadPoolExecutor
 
+class Cancelled(Exception):
+    """Raised inside a job's work (from job.update) once the job has been cancelled."""
+
 class Job:
     def __init__(self, jid, kind):
         self.id, self.kind = jid, kind
         self.state, self.progress, self.message = "queued", 0.0, "Queued"
         self.result, self.error = None, None
         self.created = time.time()
+        self.cancelled = False
+
+    def cancel(self):
+        """Ask the job to stop: a queued job never starts, a running one stops at its next update()."""
+        self.cancelled = True
 
     def update(self, progress=None, message=None):
+        if self.cancelled:
+            raise Cancelled("Cancelled: a newer request replaced this one.")
         if progress is not None:
             self.progress = float(min(max(progress, 0.0), 1.0))
         if message is not None:
@@ -40,10 +50,15 @@ class Jobs:
                     self._jobs.pop(old.id, None)
 
         def run():
+            if job.cancelled:
+                job.state, job.error, job.message = "error", "Cancelled: a newer request replaced this one.", "Cancelled"
+                return
             job.state, job.message = "running", "Starting"
             try:
                 job.result = fn(job, *args, **kw)
                 job.progress, job.state, job.message = 1.0, "done", "Done"
+            except Cancelled as ex:
+                job.state, job.error, job.message = "error", str(ex), "Cancelled"
             except Exception as ex:                      # report to the poller, never crash the worker
                 job.state, job.error = "error", getattr(ex, "detail", None) or str(ex)[:300] or ex.__class__.__name__
                 job.message = "Failed"

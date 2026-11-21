@@ -1,9 +1,9 @@
 {
- "verified": false,
- "note": "UNVERIFIED parameters, written from memory; replace with the values named in each field's source before relying on casualty numbers.",
+ "verified": true,
+ "note": "Indoor casualty rates and collapse fractions are the Hazus 6.1 values (Tables 12-3 to 12-8), read from the manual. They describe US building stock; mapping Indian types to C3L/C3M/URML is a judgement, outdoor casualties are not modelled, and the occupancy shares are only partly from Hazus (priors/occupancy.csv).",
  "collapse_fraction_given_complete": {"URM": 0.15, "RC_LOW": 0.15, "RC_MID": 0.13,
-   "source": "Hazus-style fraction of 'complete' damage that is collapse (URML ~ C3L ~ 15%, C3M ~ 13%). UNVERIFIED; Hazus 6.1 manual, collapse-rate table."},
- "pager_india": {"theta": 14.05, "beta": 0.185,
-   "source": "Jaiswal & Wald (2010) / USGS PAGER empirical fatality model, India: fatality rate = Phi(ln(MMI/theta)/beta). Values recalled, UNVERIFIED (VERIFY against USGS Open-File Report 2009-1136)."},
+   "source": "Hazus 6.1 Table 12-8, probability of collapse given complete damage: URML 15%, C3L 15%, C3M 13%."},
+ "pager_india": {"theta": 11.53, "beta": 0.14,
+   "source": "Jaiswal, Wald & Hearne (2009), USGS Open-File Report 2009-1136, country table (India: theta 11.53, beta 0.14, alpha 1.93, 28 events): fatality rate = Phi(ln(MMI/theta)/beta). Checked against the report's text (1 death per ~25 exposed at MMI IX, ~1 per 5250 at VII). An earlier draft of this file used 14.05/0.185, which are Indonesia's values in the same table."},
  "pager_flag_ratio": 5.0
 }

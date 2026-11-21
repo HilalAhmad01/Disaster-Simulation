@@ -53,15 +53,15 @@
   "beyond_validity": false,
   "buildings": 32400,
   "casualties": {
-   "caveat": "UNVERIFIED parameters, written from memory; replace with the values named in each field's source before relying on casualty numbers.",
-   "deaths": 2170,
-   "injury_1": 16945,
-   "injury_2": 5775,
-   "injury_3": 1092,
-   "pager_deaths": 1304,
+   "caveat": "Indoor casualty rates and collapse fractions are the Hazus 6.1 values (Tables 12-3 to 12-8), read from the manual. They describe US building stock; mapping Indian types to C3L/C3M/URML is a judgement, outdoor casualties are not modelled, and the occupancy shares are only partly from Hazus (priors/occupancy.csv).",
+   "deaths": 2178,
+   "injury_1": 21061,
+   "injury_2": 6665,
+   "injury_3": 1100,
+   "pager_deaths": 5607,
    "pager_disagreement": false,
-   "ratio_to_pager": 1.66,
-   "verified": false
+   "ratio_to_pager": 0.39,
+   "verified": true
   },
   "distance_method": "ps2ff (strike unknown)",
   "expected_collapses": 9257,

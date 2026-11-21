@@ -27,7 +27,7 @@ def test_pdf_has_scenario_summary_caveats_and_attribution(model):
     assert pdf.startswith(b"%PDF")
     t = pdf_text(pdf)
     for needle in ("Magnitude 7.0", "Test city", "People at risk", "Priority neighbourhoods", "Hospital access", "Suggested dispatch order", "Worst case",
-                   "UNCALIBRATED", "UNVERIFIED", "Overture Maps Foundation", "range", "Estimated deaths"):
+                   "UNCALIBRATED", "placeholders", "Overture Maps Foundation", "range", "Estimated deaths"):
         assert needle in t, needle
 
 def test_pdf_embeds_the_map_image_and_works_without_optional_parts(model):
@@ -52,3 +52,13 @@ def test_report_for_a_cyclone_has_no_earthquake_wording(model):
     h = report.render_html(ctx_for(model))
     assert "Cyclone scenario" in h and "Peak gust" in h and "Magnitude" not in h and "placeholders" in h
     assert report.to_pdf(ctx_for(model)).startswith(b"%PDF")
+
+def test_dispatch_without_an_open_route_and_hazard_titles(model):
+    """A team whose route could not be found (p_route_open None) used to crash the PDF; titles follow the hazard."""
+    d = [{"order": 1, "team": "fire station 1", "facility": "Station", "cell_rank": 1, "people_at_risk": 10, "travel_min": 3.0, "p_route_open": None}]
+    h = report.render_html(ctx_for(model, dispatch=d))
+    assert "Earthquake damage scenario" in h and "km from epicentre" in h
+    import hazards.cyclone as CY
+    model.run_hazard(CY.CycloneHazard(), dict(lat=28.575, lon=77.33, heading_deg=45, dp_hpa=90, rmax_km=20))
+    h = report.render_html(ctx_for(model))
+    assert "Cyclone damage scenario" in h and "km from track point" in h and "Earthquake damage" not in h

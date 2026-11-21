@@ -87,6 +87,7 @@ class State:
 
     def activate(self, aid):
         m = Model(self.registry.load_exposure(aid), data_dir=self.data)
+        self.cancel_mc()
         with self.lock:
             self.model, self.active_id, self.layer = m, aid, None
         self.registry.touch(aid)
@@ -121,6 +122,7 @@ class State:
         """Monte Carlo for the run just made, as a background job on a snapshot of that run."""
         import uncertainty
         snap = model.mc_snapshot()
+        self.cancel_mc()                            # a newer run makes older ranges useless: free the workers for this one
         def work(job):
             res = uncertainty.run_mc(model, n=200, seed=run_id, snapshot=snap, progress=lambda f: job.update(f, f"Computing uncertainty… {int(f * 100)}%"))
             rep = uncertainty.report(snap, res, deterministic)
@@ -133,12 +135,25 @@ class State:
             return {"run": run_id}
         job = self.jobs.submit("uncertainty", work)
         self.mc_jobs[run_id] = job.id
+        _trim(self.mc_jobs, 20)
         return job.id
+
+    def cancel_mc(self):
+        """Stop Monte Carlo jobs still queued or running (their run is no longer the one on the map)."""
+        for jid in list(self.mc_jobs.values()):
+            j = self.jobs.get(jid)
+            if j is not None and j.state in ("queued", "running"):
+                j.cancel()
 
     def need(self):
         if self.model is None:
             raise HTTPException(409, NEEDS_AREA)
         return self.model
+
+def _trim(d, keep):
+    """Keep only the `keep` newest entries (largest run numbers) of a run-keyed dict, so long sessions do not grow memory."""
+    for old in sorted(d)[:-keep]:
+        d.pop(old, None)
 
 def default_center():
     try:
@@ -346,6 +361,7 @@ def create_app(data_dir=None):
         try:
             res = layer.dispatch({k: v for k, v in t.model_dump().items() if v})
             st.last_dispatch[layer.model.run_id] = res
+            _trim(st.last_dispatch, 5)
             return {"assignments": res}
         except ValueError as ex:
             raise HTTPException(409, str(ex))
@@ -417,12 +433,19 @@ def create_app(data_dir=None):
         """Body = a GeoTIFF of water depth in metres (any CRS, one band). Saved as data/hazards/flood/<name>.tif."""
         if not re.fullmatch(r"[A-Za-z0-9_.-]{1,60}", name):
             raise HTTPException(400, "Use letters, digits, dot, dash or underscore in the name.")
-        body = await request.body()
-        if not body or len(body) > MAX_RASTER:
-            raise HTTPException(400, "Send a GeoTIFF of at most 300 MB.")
         import rasterio, tempfile
-        with tempfile.NamedTemporaryFile(suffix=".tif", dir=flood_dir(), delete=False) as tmp:
-            tmp.write(body)
+        # stream to disk (a 300 MB raster is never held in memory); '.part' so the raster list never shows a half-written file
+        size, too_big = 0, False
+        with tempfile.NamedTemporaryFile(suffix=".part", dir=flood_dir(), delete=False) as tmp:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > MAX_RASTER:
+                    too_big = True
+                    break
+                tmp.write(chunk)
+        if too_big or size == 0:
+            pathlib.Path(tmp.name).unlink(missing_ok=True)
+            raise HTTPException(400, "Send a GeoTIFF of at most 300 MB.")
         try:
             with rasterio.open(tmp.name) as ds:
                 if ds.count < 1 or ds.crs is None:
@@ -449,6 +472,7 @@ def create_app(data_dir=None):
         if not raw.startswith(b"\x89PNG"):
             raise HTTPException(400, "Send a PNG image.")
         st.report_img[run] = raw
+        _trim(st.report_img, 3)                      # images are several MB each
         return {"ok": True}
 
     def report_ctx(run):

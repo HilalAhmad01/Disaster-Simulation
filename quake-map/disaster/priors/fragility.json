@@ -1,12 +1,35 @@
 {
  "status": "UNCALIBRATED PLACEHOLDER",
- "source": "v1.0 placeholder medians and a single dispersion of 0.6. NOT fitted to data and NOT taken from HAZUS or GEM. Replace by running tools/calibrate_fragility.py --apply once the Nepal 2015 survey is available (see docs/calibration/README.md).",
+ "source": "v1.0 placeholder medians and a single dispersion of 0.6. NOT fitted to data and NOT taken from HAZUS or GEM. On 2026-11-21 a fit to the Nepal 2015 building table (762k buildings) was run and rejected (URM held-out skill 0.03, RC fits degenerate; docs/calibration/README.md) and the placeholders were compared with GEM (docs/calibration/gem_comparison.md): they are far more fragile than GEM below 0.5 g.",
  "pga_g_medians_slight_moderate_extensive_complete": {
-  "URM": [0.10, 0.18, 0.32, 0.55],
-  "RC_LOW": [0.18, 0.32, 0.55, 0.90],
-  "RC_MID": [0.14, 0.26, 0.45, 0.75]
+  "URM": [
+   0.1,
+   0.18,
+   0.32,
+   0.55
+  ],
+  "RC_LOW": [
+   0.18,
+   0.32,
+   0.55,
+   0.9
+  ],
+  "RC_MID": [
+   0.14,
+   0.26,
+   0.45,
+   0.75
+  ]
  },
- "beta": {"URM": 0.6, "RC_LOW": 0.6, "RC_MID": 0.6},
- "class_status": {"URM": "placeholder", "RC_LOW": "placeholder", "RC_MID": "placeholder"},
+ "beta": {
+  "URM": 0.6,
+  "RC_LOW": 0.6,
+  "RC_MID": 0.6
+ },
+ "class_status": {
+  "URM": "placeholder; Nepal fit rejected (no held-out skill, median of complete damage 2 g is outside the data range)",
+  "RC_LOW": "placeholder; Nepal fit degenerate (damage does not rise with ShakeMap PGA across districts)",
+  "RC_MID": "placeholder; Nepal fit degenerate (only 1,558 buildings)"
+ },
  "samples": {}
 }

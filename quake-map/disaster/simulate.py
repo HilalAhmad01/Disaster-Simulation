@@ -26,14 +26,25 @@ TIMES = ("night", "day", "commute")
 def damage_probs(pga, W, frag=None, beta=None):
     """P(damage >= slight/moderate/extensive/complete), shape (n, 4): the mix over construction types
     sum_t w_t * Phi((ln PGA - ln theta_t,k) / beta_t). pga in g, shape (n,); W (n, 3) type weights summing to 1."""
+    return mix_exceedance(exceedance(pga, W, frag, beta), W, len(pga))
+
+def exceedance(pga, W, frag=None, beta=None):
+    """Per construction type: (column j, selector of buildings with weight > 0, P(DS >= k) for them). Shared by damage_probs and
+    casualty.casualties_from so the Monte Carlo evaluates each fragility curve once per realisation."""
     frag, beta = frag or FRAG, beta or BETA
     lp = np.log(np.maximum(pga, 1e-9))[:, None]
-    P = np.zeros((len(pga), 4))
+    out = []
     for j, t in enumerate(TYPES):
         sel = W[:, j] > 0
         if not sel.any():
             continue
-        Pt = ndtr((lp[sel] - np.log(np.asarray(frag[t]))) / beta[t])
+        out.append((j, sel, ndtr((lp[sel] - np.log(np.asarray(frag[t]))) / beta[t])))
+    return out
+
+def mix_exceedance(E, W, n):
+    """Mix per-type exceedance (from exceedance()) over the type weights: (n, 4)."""
+    P = np.zeros((n, 4))
+    for j, sel, Pt in E:
         P[sel] += W[sel, j:j + 1] * Pt
     return P
 

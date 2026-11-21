@@ -88,6 +88,28 @@ mostly measure where mappers looked. The all-town curve (median 2.3 g) is theref
 gradings can test ranking within a town (above) but cannot calibrate fragility; the household survey (every damaged house, with
 building type and ward) remains necessary.
 
+### Held-out Nepal districts on the real survey (plan 3.6.1, added 2026-11-21)
+The household-survey building table is now available (an open mirror of the derived table; docs/calibration/README.md). Fits on 8 districts, scored on
+districts 22, 29 and 36 left out, untruncated likelihood with undamaged buildings as state 0, 200 ward-bootstrap samples. Skill is
+1 - log-loss / log-loss of a null that predicts the training state mix everywhere:
+
+| class | held-out buildings | skill | Brier (null) |
+|---|---|---|---|
+| URM | 1,575 | **0.03** | 0.060 (0.074) |
+| RC_LOW | 6,841 | -5.98 (fit degenerate) | 0.258 (0.133) |
+| RC_MID | 304 | 0.03 | 0.027 (0.027) |
+
+**Reading:** the ShakeMap-based curves do not transfer between districts; no class beats the null by the 0.10 the tool requires, so no
+fit was applied. This agrees with the earlier leave-one-town-out result on Copernicus gradings. Ward-level PGA does correlate with damage
+(Spearman +0.53 for brick, +0.22 for RC), but the eleven districts span only 0.23-0.65 g.
+
+## Intensity far from the source (plan 2.3, added 2026-11-21)
+`docs/validation_gorkha_delhi.md`: for Gorkha 2015 the ground-motion mix gives about MMI 1.0 in Delhi-NCR (~700 km, PGA 0.0002 g) where USGS
+"Did You Feel It?" reports about MMI 4.0 (191 responses, 14 cells). Beyond 400 km the mix is BSSA14 alone, which decays fastest; SHARMA09 alone
+gives MMI 3.3. No retuning was done on one event. Damage and casualty outputs are unaffected at such distances; PGA and MMI maps for distant
+epicentres are not reliable (the run summary flags `beyond_validity`).
+
 ## Not yet validated
-Fragility curves are still the v1 placeholders (Phase 3 replaces them), so absolute damage and casualty numbers carry that
-uncertainty.
+Fragility curves are still the v1 placeholders (the real-data fit was rejected, see above), so absolute damage and casualty numbers carry that
+uncertainty. Debris-blocking probabilities and flood extents have not been checked against observations (the JRC 100-year map floods 55% of Noida's
+buildings, which is not credible). The storey spot-check against imagery (plan 1.4) is prepared but needs a person (`tools/spotcheck_storeys.py`).

@@ -4,6 +4,26 @@ Every change to a model number must be explained here (see MASTER_PLAN.md sectio
 
 ## Unreleased (master-plan implementation)
 
+### Bug, UI and performance pass (2026-11-21)
+No model numbers change (people-at-risk ranges are bit-identical; casualty totals in the Monte Carlo differ only by summation order).
+- **Monte Carlo 60 s -> 31 s on Noida (483k buildings).** Each realisation evaluated every fragility curve twice (damage and casualties) and
+  did per-type masked indexing; with one sampled type per building it now gathers each building's curve and evaluates once
+  (`simulate.exceedance`, `casualty.casualties_from`, `casualty.totals_one_type`; equivalence test in `tests/test_casualty.py`).
+- A new simulation (or an area switch) cancels the previous run's Monte Carlo instead of letting stale jobs occupy both workers (`Job.cancel`).
+- Memory no longer grows with the session: report images (several MB each), dispatch lists, access results and job ids keep only the newest runs.
+  Flood uploads stream to disk (were read whole into memory, up to 300 MB) under a `.part` name so the raster list never shows half a file.
+- Place names: failed lookups are remembered for 10 minutes and an unreachable service for 1 minute, so a report built offline no longer
+  waits up to 8 x 6 s. The tile reader cache is thread-safe. "Nearest facility" routes use one multi-source Dijkstra.
+- Report: no longer crashes when a dispatched team has no open route; title and distance column follow the hazard (was always "Earthquake ... km
+  from epicentre"); flood reports show the raster name, not the server path, and no fake 0, 0 location; scenario text is escaped once, not twice.
+- Page: job polling stops with a message when the server forgets a job (used to loop forever); validation errors are readable ("Magnitude: ...")
+  and empty inputs are caught before sending (an empty box became 0); the flood file is uploaded once, not on every run; access circles, routes,
+  wave rings and warning colours of the previous run are cleared, and switching area resets the responder panel (old hospitals and Route
+  buttons stayed and then failed); building popups name the hazard of the run on the map, and only one is open at a time; Enter runs the
+  scenario, Esc cancels epicentre picking; the theme is applied before first paint and outlines and rupture lines turn light in dark mode;
+  popup arrows on left/right-anchored popups and the popup close button (styled as a full-width button) are fixed; the saved map image uses the
+  page font and no longer says "peak MMI undefined" for cyclones and floods; the report's map image is capped at 2400 px.
+
 ### Phase 0: foundations
 - git repository created; first commit is the v1.x baseline after performance fixes 1-4.
 - Server starts without data (`/api/meta` returns `empty: true`; data endpoints return 409 "Load an area first.").
@@ -18,6 +38,50 @@ Every change to a model number must be explained here (see MASTER_PLAN.md sectio
 
 **Reference numbers (v1.x model, flat soil, Overture 2026-11-18.0, baseline box, 32,400 buildings)** are stored in
 `tests/baselines/*.json` in the first commit that contains them; later phases must explain every change from them.
+
+### Real-data pass (2026-11-21): inputs that were placeholders because data was "unreachable"
+Most of the "blocked" data turned out to be reachable: Python's urllib is answered with 403 by some hosts where curl is not, FEMA and
+MDPI refuse scripts but the Internet Archive serves their files, and the Nepal survey table exists as an open mirror. Changes, with
+their effect on the three baseline scenarios (flat soil, so the soil change is shown separately):
+- **Casualty rates** (`priors/casualty_rates.csv`, now per building type: URM -> Hazus URML, RC_LOW -> C3L, RC_MID -> C3M) and collapse
+  fractions are the Hazus 6.1 values (tables 12-3 to 12-8) instead of recalled numbers. Effect: deaths change by < 1% (a 454 vs 451, b 2,178
+  vs 2,170, c 175 vs 173; collapse cases dominate and they were already right), injuries rise (severity 1: +32% a, +24% b, +35% c; severity 2:
+  +37%, +15%, +66%) because URM has far higher moderate/extensive injury rates than RC. `casualty.load()` now returns a dict of per-type arrays.
+- **PAGER India parameters**: theta 11.53, beta 0.14 (USGS OFR 2009-1136 country table; the old 14.05 / 0.185 were Indonesia's). PAGER deaths
+  rise 2.0x to 4.3x (a 118 -> 327, b 1,304 -> 5,607, c 31 -> 61); the ratio of our deaths to PAGER becomes 1.39 / 0.39 / 2.86 (was
+  3.83 / 1.66 / 5.63) and the false "disagreement" flag on scenario c is gone. For the M7.5 scenario our deaths are now 2.6x **below** PAGER.
+- **Occupancy shares** (`priors/occupancy.csv`) follow Hazus Table 12-2 where it gives a value: office night 0.02 / day 0.97 / evening 0.49,
+  industrial 0.10 / 0.72 / 0.45, hotel 0.999 / 0.19 / 0.299, education 0 / 0.72 / 0.10 (warehouse treated as industrial). Other rows are
+  now labelled judgement. Effect only on areas built from now on (the exposure caches night/day/commute people).
+- **Census prior** (`priors/census_materials.csv`, `construction_mix.csv`): real Census 2011 urban shares (India: walls 0.848, roof 0.691;
+  Delhi 0.959 / 0.702; Uttar Pradesh 0.879 / 0.352). 1-2 storey URM share for the default region 0.525 -> 0.555; 3-4 storeys RC_LOW
+  0.600 -> 0.691. Cached areas keep the prior they were built with until rebuilt.
+- **Soil**: the real USGS Vs30 grid is installed (`tools/get_vs30.py` now downloads it). Noida median Vs30 229 m/s (was flat 250). Effect on
+  the baseline scenarios: people at risk -3.5% (a), -8.2% (b), +0.4% (c); expected collapses -5.1%, -13.4%, +0.5%; median PGA 0.264 -> 0.260,
+  0.496 -> 0.461 (b). Baselines in `tests/baselines/` were regenerated **with flat soil** (VS30_TIF set to a missing file) so they do not
+  depend on the 621 MB raster.
+- **Flood**: depth-damage curve is the JRC Huizinga et al. (2017) Asia residential curve (was the Europe curve under a placeholder label).
+  `tools/get_jrc_flood.py` fetches a JRC return-period map. On the 100-year map 55% of Noida's buildings are flooded: almost certainly too many.
+- **Debris blockage** (`roads.py`): replaced the placeholder reach/width rule by the Anelli et al. (2020) criterion (street unusable when under
+  3.5 m stays free) and debris-width equations by building type; `blockage()` takes `p_masonry`. Blockage probabilities rise for low-rise
+  buildings (a 3-storey masonry building can now block a 6 m street from 1 m away; it could not before). Direction weights are assumed.
+- **Fragility**: the Nepal fit was run on real data and **not applied** (see docs/calibration/README.md): undamaged buildings are now counted
+  as state 0 and the likelihood is untruncated; degenerate fits are flagged and a fit needs held-out skill >= 0.10. `tools/compare_gem.py`.
+- **Gorkha in Delhi** (`tools/validate_gorkha_delhi.py`): the ground-motion mix predicts MMI 1.0 at ~700 km against DYFI 4.0. Not re-tuned.
+- `tools/prefetch_region.py` now also downloads heights and population (it previously built the exposure without them), and was run on
+  central Delhi (1,214,387 buildings). `tools/spotcheck_storeys.py` prepares the manual storey spot-check.
+- Tests: 141 -> 146 passed (casualty rates per type, JRC flood curve, Anelli equations; road tests rewritten for the new rule).
+
+### Frontend polish (2026-11-21, `index.html`)
+Done with the unslop skill (CC BY 4.0, Damir Sokolovsky, github.com/heydamir/unslop) in polish mode: the page had craft debt, not AI tells.
+- Design tokens on a 4px grid, graphite neutrals in light and dark, IBM Plex Sans with IBM Plex Mono for coordinates and figures, weights 400/500 only,
+  no chrome accent (the damage colours are the only colour). One primary button, secondary buttons on a raised surface with hairline borders,
+  hover and visible focus states, custom select and disclosure arrows, quieter popups and pins (neutral, not red).
+- Results first: the scenario form is one `<details>` that folds to a readout ("M6.5, 15 km, night") after a run; Summary (with people at risk as a
+  large figure), legend and priorities now come before export, waves and responders. No feature or ID changed.
+- **Map damage layer**: the density heatmap is replaced by soft discs coloured by each cell's own mean damage state. The heatmap showed how many cells
+  overlapped, so a 1.2-million-building scenario with 0 severe buildings drew a solid red slab. It now shows the real range (green to yellow here).
+- Progress bars no longer animate width; reduced-motion removes transitions. No test depends on the markup.
 
 ### Phase 1: building data
 - **Storeys** come from Google Open Buildings 2.5D Temporal heights (median over 2021-2023 of the zonal median inside each

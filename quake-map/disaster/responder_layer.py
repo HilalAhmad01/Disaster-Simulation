@@ -46,7 +46,9 @@ class Layer:
     def blockage(self):
         L = self.model.last
         h = L["levels"].to_numpy(float) * R.STOREY_M
-        return R.blockage(self.net, self._building_geoms_utm(), h, L["p_collapse"].to_numpy(float), L["p_extensive"].to_numpy(float))
+        import simulate as S
+        return R.blockage(self.net, self._building_geoms_utm(), h, L["p_collapse"].to_numpy(float), L["p_extensive"].to_numpy(float),
+                          p_masonry=self.model.W[:, S.TYPES.index("URM")])
 
     def working_hospitals(self, state=None):
         s = state if state is not None else self.facility_state()
@@ -78,8 +80,10 @@ class Layer:
                            "median_minutes": round(pa["median_minutes"], 1), "streets": int(len(blocked)),
                            "streets_likely_blocked": int((blocked > 0.5).sum()), "streets_any_risk": int((blocked > 0.05).sum()),
                            "hospitals": int(len(hosp)), "hospitals_may_not_work": int((state.may_not_work.to_numpy()[hosp]).sum()), "samples": n,
-                           "blockage_constants": {"reach": R.REACH, "share_of_width": R.F_BLOCK, "partial": R.G_PARTIAL, "calibrated": False}}}
+                           "blockage_constants": {"min_free_width_m": R.FREE_MIN_M, "direction_weight": R.DIR_W, "calibrated": "form and 3.5 m criterion from Anelli et al. 2020; direction weights assumed"}}}
         self.access[run] = res
+        for old in sorted(self.access)[:-3]:             # each result holds per-sample arrays over all road nodes
+            self.access.pop(old, None)
         return res
 
     # ---- routes and dispatch ----
@@ -109,10 +113,12 @@ class Layer:
                 raise ValueError(f"No working {kind.replace('_', ' ')} found.")
             M = self.graph.matrix(P.expected_cost(self.net, a["p_edge"]))
             from scipy.sparse.csgraph import dijkstra
-            d = dijkstra(M, directed=True, indices=self.fnode[cand])
-            best = int(cand[np.argmin(d[:, node])])
-            if not np.isfinite(d[:, node].min()):
+            # one multi-source pass (min_only) instead of a full facilities x nodes matrix; `sources` names the nearest one
+            d, _, src = dijkstra(M, directed=True, indices=self.fnode[cand], min_only=True, return_predecessors=True)
+            if not np.isfinite(d[node]):
                 raise ValueError("No open route found.")
+            ties = cand[self.fnode[cand] == src[node]]
+            best = int(ties[0])
         else:
             best = int(source)
         r = P.route(self.net, int(self.fnode[best]), node, a["p_edge"], self.graph)

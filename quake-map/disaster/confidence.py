@@ -13,8 +13,8 @@ def build(model, area_meta=None, data_dir=None):
     items.append({"topic": "Building strength (fragility curves)", "level": "good" if cal and frag["status"].startswith("CALIBRATED") else "caution" if cal else "poor",
                   "text": frag["status"].capitalize() + ". " + ("; ".join(f"{k}: {v}" for k, v in frag.get("class_status", {}).items()) if cal else "Not fitted to data; damage numbers are relative, not predictions.")})
     cas = json.loads(priors.path("casualty_params.json", data_dir).read_text())
-    items.append({"topic": "Casualty rates", "level": "good" if cas.get("verified") else "poor",
-                  "text": "Verified against the Hazus manual." if cas.get("verified") else "Unverified placeholders in the Hazus structure; compare with the PAGER figure."})
+    items.append({"topic": "Casualty rates", "level": "caution" if cas.get("verified") else "poor",
+                  "text": "Rates are the Hazus 6.1 values (US building stock), mapped by judgement to Indian types; outdoor casualties not modelled; compare with the PAGER figure." if cas.get("verified") else "Unverified placeholders in the Hazus structure; compare with the PAGER figure."})
     st = model.stats if model is not None else {}
     if "levels_measured_share" in st:
         sh = st["levels_measured_share"]
@@ -25,7 +25,7 @@ def build(model, area_meta=None, data_dir=None):
     if "pop_src" in st:
         ok = st["pop_src"] == "GHS-POP"
         items.append({"topic": "People", "level": "caution" if ok else "poor", "text": ("Scaled to GHS-POP (a modelled estimate)" if ok else "Typical-occupancy guess without a population raster (probably far too high)") + "."})
-    items.append({"topic": "Construction types", "level": "caution", "text": "Probabilities from a documented rule with an assumed census prior; not measured."})
+    items.append({"topic": "Construction types", "level": "caution", "text": "Probabilities from a documented rule applied to Census 2011 urban wall and roof shares (concrete roofs are lumped with metal sheets in the tables); not measured per building."})
     f = HERE / "docs" / "validation_summary.json"
     if f.exists():
         v = json.loads(f.read_text())

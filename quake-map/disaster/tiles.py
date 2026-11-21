@@ -9,7 +9,7 @@ setting 483k feature states.
 Settings keep the picture identical to the GeoJSON path: extent 8192 (MapLibre's GeoJSON extent), no line simplification, no
 tiny-polygon reduction, no feature or size limits (nothing is dropped), zooms 13-16 (the page over-zooms beyond 16).
 """
-import gzip, json, pathlib, subprocess, shutil
+import gzip, json, pathlib, subprocess, shutil, threading
 import numpy as np
 
 MINZ, MAXZ = 13, 16
@@ -62,17 +62,21 @@ def meta(path):
     f = pathlib.Path(path).with_suffix(".json")
     return json.loads(f.read_text()) if f.exists() and pathlib.Path(path).exists() else None
 
-_readers = {}
+_readers, _rlock = {}, threading.Lock()
 def read_tile(path, z, x, y):
-    """Raw (gzip-compressed) tile bytes, or None. Readers are cached per file."""
+    """Raw (gzip-compressed) tile bytes, or None. Readers are cached per file (tile requests arrive on many threads at once)."""
     from pmtiles.reader import Reader, MmapSource
     key = (str(path), pathlib.Path(path).stat().st_mtime_ns)
-    if key not in _readers:
-        for k in [k for k in _readers if k[0] == str(path)]:
-            _readers.pop(k)[1].close()
-        fh = open(path, "rb")
-        _readers[key] = (Reader(MmapSource(fh)), fh)
-    return _readers[key][0].get(z, x, y)
+    r = _readers.get(key)
+    if r is None:
+        with _rlock:
+            r = _readers.get(key)
+            if r is None:
+                for k in [k for k in _readers if k[0] == str(path)]:
+                    _readers.pop(k)[1].close()
+                fh = open(path, "rb")
+                r = _readers[key] = (Reader(MmapSource(fh)), fh)
+    return r[0].get(z, x, y)
 
 def run_attrs(last):
     """Per-run attributes for all buildings as two strings indexed by feature id: cat (one digit 0-3, the colour class) and pc

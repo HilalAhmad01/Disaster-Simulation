@@ -1,8 +1,8 @@
 """Flood hazard (MASTER_PLAN 7.2): water depth at each building from a raster, damage from a depth-damage curve.
 
 Depth source: a GeoTIFF of water depth in metres (a scenario you supply, or a return-period map such as the JRC global river
-flood hazard maps; none is bundled). Damage: a depth-damage curve (priors/flood_damage.csv, UNVERIFIED placeholder shape, to be
-replaced with the JRC Huizinga et al. 2017 Asia curves) converted to damage states by loss-ratio thresholds; the median depth of
+flood hazard maps; fetch one with tools/get_jrc_flood.py). Damage: the JRC Huizinga et al. (2017) Asia residential depth-damage
+curve (priors/flood_damage.csv, used for every building use: an assumption) converted to damage states by loss-ratio thresholds; the median depth of
 each state is the depth at which the curve reaches the threshold, with a lognormal spread in depth (assumed beta). A building of
 several storeys is assumed to lose less per metre of water: effective depth = depth / sqrt(storeys) (assumption).
 """
@@ -68,8 +68,8 @@ class FloodHazard(Hazard):
         d = intensity["value"]
         return {"peak": [["Deepest water at a building (m)", round(float(d.max()), 2)], ["Buildings with water", int((d > 0).sum())]],
                 "max_depth_m": round(float(d.max()), 2), "flooded_buildings": int((d > 0).sum()),
-                "hazard_note": "Flood damage curve is an UNVERIFIED placeholder shape; casualties are not modelled for floods."}
+                "hazard_note": "Depth-damage curve: JRC (Huizinga 2017) Asia residential, applied to every use; the mapping from loss ratio to damage states and its spread are assumptions. Casualties are not modelled for floods. JRC return-period maps are not official hazard maps and tend to over-predict flooding on plains."}
 
     def describe(self):
         return {"name": self.name, "label": "Flood", "intensity": "Water depth", "unit": "m", "inputs": ["raster", "scale", "time_of_day"],
-                "note": "Supply a water-depth GeoTIFF for the scenario; the depth-damage curve is a placeholder."}
+                "note": "Supply a water-depth GeoTIFF for the scenario (or fetch a JRC return-period map with tools/get_jrc_flood.py); depth-damage curve: JRC Asia residential."}

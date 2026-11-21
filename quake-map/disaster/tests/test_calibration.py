@@ -168,3 +168,36 @@ def test_binary_fit_recovers_curve_and_scores_beat_the_base_rate():
     assert C.score_binary(np.full(60, k.sum() / n.sum()), k, n, k.sum() / n.sum())["skill_logloss"] == pytest.approx(0, abs=1e-9)
     bins = C.calibration_bins(p, k, n)
     assert all(abs(b["predicted"] - b["observed"]) < 0.08 for b in bins if b["n"] > 1000)
+
+def test_undamaged_buildings_are_state_zero_not_slight():
+    """In the real Nepal table 'Not damaged' buildings carry grade 1, like slightly damaged ones: they must land in n0, not n1."""
+    df = pd.DataFrame({"cls": ["URM"] * 4, "ward": ["a"] * 4, "damage_grade": [1, 1, 1, 3],
+                       "condition_post_eq": ["Not damaged", "Not damaged", "Damaged-Repaired and used", "Damaged-Used in risk"]})
+    wp = pd.DataFrame({"mean_lnpga": [np.log(.3)], "sd_lnpga": [.1], "sigma_shakemap": [.3]}, index=pd.Index(["a"], name="ward"))
+    plain = C.to_groups(df, "ward", "damage_grade", wp).iloc[0]
+    assert (plain.n0, plain.n1, plain.n3) == (0, 3, 1)                              # old behaviour: undamaged counted as slight
+    g = C.to_groups(df, "ward", "damage_grade", wp, undamaged=df.condition_post_eq == "Not damaged").iloc[0]
+    assert (g.n0, g.n1, g.n3) == (2, 1, 1)
+
+def test_degenerate_fit_is_flagged_and_never_narrow():
+    boot = np.tile([0.2, 0.4, 0.6, 1.0, 0.6], (30, 1)) + 1e-4 * np.random.default_rng(0).standard_normal((30, 5))      # perfectly tight interval
+    sane = {"theta": np.array([0.2, 0.4, 0.6, 1.0]), "beta": 0.6, "success": True}
+    assert C.summarize(sane, boot)["narrow_ci"] and not C.summarize(sane, boot)["degenerate"]
+    for bad in ({"theta": np.array([0.2, 0.4, np.inf, np.inf]), "beta": 0.6, "success": True},        # RC_LOW on the real Nepal data
+                {"theta": np.array([0.2, 0.4, 0.6, 1.0]), "beta": 664.0, "success": True},
+                {"theta": np.array([0.2, 0.4, 0.6, 1.0]), "beta": 0.0, "success": True},                  # RC_MID: beta on its boundary
+                {"theta": np.array([0.2, 0.4, 0.6, 1.0]), "beta": 0.6, "success": False}):
+        r = C.summarize(bad, boot)
+        assert r["degenerate"] and not r["narrow_ci"]
+    cur = {"status": "UNCALIBRATED PLACEHOLDER", "pga_g_medians_slight_moderate_extensive_complete": {"URM": [.1, .2, .3, .5]}, "beta": {"URM": .6}}
+    out = C.choose_final({"URM": C.summarize(bad, boot)}, cur)
+    assert out["pga_g_medians_slight_moderate_extensive_complete"]["URM"] == [.1, .2, .3, .5] and "degenerate" in out["class_status"]["URM"]
+
+def test_holdout_score_untruncated_scores_the_undamaged_state_too():
+    xa, sa, na = simulate(n_wards=200, seed=6, truncated=False)
+    tr = (np.arange(200) < 150)
+    mk = lambda m: pd.DataFrame({"x": xa[m], "s": sa[m], **{f"n{k}": na[m][:, k] for k in range(5)}})
+    train, test = mk(tr), mk(~tr)
+    mle = C.fit(train.x.to_numpy(), train.s.to_numpy(), train[[f"n{k}" for k in range(5)]].to_numpy(), False)
+    sc = C.holdout_score(mle, test, train, truncated=False)
+    assert sc["n_buildings"] == int(test[[f"n{k}" for k in range(5)]].to_numpy().sum()) and sc["skill"] > 0.05

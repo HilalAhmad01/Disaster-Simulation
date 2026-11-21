@@ -8,7 +8,9 @@ tools/get_nepal_calibration.py. Example:
 
 Steps: ward PGA (population-weighted ShakeMap) -> class + grade mapping -> grouped likelihood with shaking uncertainty ->
 ward bootstrap -> plots in docs/calibration/ -> (--apply) write data/priors/fragility.json by the 3.5 rule.
-The survey lists DAMAGED buildings only, so the likelihood is conditional on damage (truncated) unless --untruncated.
+If the survey lists DAMAGED buildings only the likelihood is conditional on damage (default, truncated). The public Nepal table
+also contains undamaged buildings (condition_post_eq == "Not damaged"); pass --undamaged-col condition_post_eq
+--undamaged-value "Not damaged" --untruncated to count them as state 0 and fit the full likelihood (see docs/calibration).
 """
 import argparse, json, pathlib, sys
 import numpy as np, pandas as pd
@@ -16,12 +18,14 @@ HERE = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HERE))
 import calibration as C
 
+MIN_HELDOUT_SKILL = 0.10
+
 def main(argv=None, out=None):
     ap = argparse.ArgumentParser()
     for a, kw in (("--survey", dict(required=True)), ("--wards", dict(required=True)), ("--survey-ward-col", dict(required=True)),
                   ("--ward-col", dict(required=True)), ("--grade-col", dict(required=True)), ("--shakemap", dict(required=True)),
                   ("--uncertainty", {}), ("--pop", {}), ("--district-col", {}), ("--holdout", dict(default="")), ("--boot", dict(type=int, default=200)),
-                  ("--alt-grades", dict(action="store_true")), ("--untruncated", dict(action="store_true")), ("--apply", dict(action="store_true"))):
+                  ("--undamaged-col", {}), ("--undamaged-value", {}), ("--alt-grades", dict(action="store_true")), ("--untruncated", dict(action="store_true")), ("--apply", dict(action="store_true"))):
         ap.add_argument(a, **kw)
     a = ap.parse_args(argv)
     import geopandas as gpd
@@ -45,19 +49,25 @@ def main(argv=None, out=None):
     holdout = [h for h in a.holdout.split(",") if h]
     if holdout:
         sv_test = sv[sv[a.district_col].astype(str).isin(holdout)]; sv = sv[~sv[a.district_col].astype(str).isin(holdout)]
-    groups = C.to_groups(sv, a.survey_ward_col, a.grade_col, wp.rename_axis(a.survey_ward_col), grade_map=gm)
+    und = lambda d: (d[a.undamaged_col].astype(str) == a.undamaged_value) if a.undamaged_col else None
+    groups = C.to_groups(sv, a.survey_ward_col, a.grade_col, wp.rename_axis(a.survey_ward_col), grade_map=gm, undamaged=und(sv))
     groups = groups.rename(columns={a.survey_ward_col: "ward"}) if a.survey_ward_col in groups else groups
     fits = C.fit_classes(groups, out, n_boot=a.boot, truncated=not a.untruncated, plots=out / "plots" if out != HERE / "data" / "calibration" / "nepal" else HERE / "docs" / "calibration")
     for c, r in fits.items():
         print(c, r.get("skipped") or {k: round(r[k]["mle"], 3) for k in ("theta_slight", "theta_moderate", "theta_extensive", "theta_complete", "beta")},
               "narrow CI" if r.get("narrow_ci") else "")
     if holdout:
-        tg = C.to_groups(sv_test, a.survey_ward_col, a.grade_col, wp.rename_axis(a.survey_ward_col), grade_map=gm)
+        tg = C.to_groups(sv_test, a.survey_ward_col, a.grade_col, wp.rename_axis(a.survey_ward_col), grade_map=gm, undamaged=und(sv_test))
         for c, r in fits.items():
             if "skipped" in r or not len(tg[tg.cls == c]):
                 continue
             res = {"theta": np.array([r[k]["mle"] for k in ("theta_slight", "theta_moderate", "theta_extensive", "theta_complete")]), "beta": r["beta"]["mle"]}
-            print("held-out", c, C.holdout_score(res, tg[tg.cls == c], groups[groups.cls == c]))
+            sc = C.holdout_score(res, tg[tg.cls == c], groups[groups.cls == c], truncated=not a.untruncated)
+            print("held-out", c, sc)
+            r["heldout"] = {k: sc[k] for k in ("skill", "brier", "brier_null", "n_buildings")}
+            if not r.get("degenerate") and sc["skill"] < MIN_HELDOUT_SKILL:        # a fit that does not predict held-out districts is not applied
+                r["narrow_ci"] = False
+                r["rejected"] = f"held-out skill {sc['skill']:.2f} < {MIN_HELDOUT_SKILL} (no better than the training-mix null)"
     if a.apply:
         import priors
         cur = json.loads(priors.path("fragility.json").read_text())

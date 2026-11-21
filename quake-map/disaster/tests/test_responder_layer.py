@@ -57,7 +57,7 @@ def test_access_route_and_dispatch_after_a_quake(layer):
     m.run(lat0 + 0.004, lon0 + 0.004, 8, 7.6)
     a = L.compute_access(n=20, seed=1)
     s = a["summary"]
-    assert s["hospitals"] == 2 and 0 <= s["share_no_access"] <= 1 and s["samples"] == 20 and s["blockage_constants"]["calibrated"] is False
+    assert s["hospitals"] == 2 and 0 <= s["share_no_access"] <= 1 and s["samples"] == 20 and "Anelli" in s["blockage_constants"]["calibrated"]
     assert len(a["cells"]["features"]) > 0 and all(f["properties"]["minutes"] >= 0 for f in a["cells"]["features"])
     assert a["p_edge"].max() > 0                           # a strong quake blocks something
     rank = next(f["properties"]["rank"] for f in m.cells if f["properties"]["rank"] == 1)

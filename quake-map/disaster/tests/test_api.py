@@ -112,7 +112,7 @@ def test_report_endpoints(client, monkeypatch):
 def test_confidence_panel_reads_live_status(client):
     items = {i["topic"]: i for i in client.get("/api/confidence").json()["items"]}
     assert items["Building strength (fragility curves)"]["level"] == "poor" and "ncalibrated" in items["Building strength (fragility curves)"]["text"]
-    assert items["Casualty rates"]["level"] == "poor" and "Past-earthquake replays" in items
+    assert items["Casualty rates"]["level"] == "caution" and "Past-earthquake replays" in items
     assert items["Past-earthquake replays"]["level"] in ("poor", "caution")
 
 def test_priority_cells_report_data_completeness(client):

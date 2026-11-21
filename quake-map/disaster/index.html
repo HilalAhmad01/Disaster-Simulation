@@ -2,52 +2,98 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Quake damage map</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='3' y='3' width='10' height='10' transform='rotate(45 8 8)' fill='%23d7263d'/%3E%3C/svg%3E">
+<script>(function(){let t='light';try{t=localStorage.getItem('quake-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch(e){}document.documentElement.dataset.theme=t})()</script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
 <style>
-:root{--ink:#1c2630;--paper:#f2f4f5;--line:#cfd6db;--card:#fff;--red:#d7263d;--yel:#f2b705;--grn:#3aa655;--blu:#3b7dd8;--muted:#5b6874;color-scheme:light}
-:root[data-theme=dark]{--ink:#e6edf3;--paper:#161b22;--line:#30363d;--card:#0d1117;--muted:#9aa7b4;color-scheme:dark}
-body{background:var(--paper)}
-*{box-sizing:border-box}html,body{height:100%;margin:0;font:15px/1.4 Barlow,system-ui,sans-serif;color:var(--ink)}
+/* Design tokens. 4px grid; graphite neutrals; no chrome accent, so the damage colours are the only colour on screen. */
+:root{
+  --bg:#fafafa;--side:#fafafa;--surface:#fff;--raised:#f4f4f5;--hover:#ececee;
+  --line:rgba(23,23,23,.08);--line-2:rgba(23,23,23,.16);
+  --ink:#171717;--ink-hover:#2e2e2e;--text2:#525252;--muted:#737373;
+  --red:#d7263d;--yel:#f2b705;--grn:#3aa655;--blu:#3b7dd8;--neg:#dc2626;
+  --sans:'IBM Plex Sans',system-ui,sans-serif;--mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --ease:cubic-bezier(.2,0,0,1);--chev:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%23737373' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
+  color-scheme:light}
+:root[data-theme=dark]{
+  --bg:#141415;--side:#0f0f10;--surface:#19191b;--raised:#232325;--hover:#2c2c2f;
+  --line:rgba(237,237,237,.08);--line-2:rgba(237,237,237,.16);
+  --ink:#ededed;--ink-hover:#fff;--text2:#a1a1a6;--muted:#85858b;--neg:#e5484d;
+  --chev:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%2385858b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
+  color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font:400 14px/20px var(--sans);color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased}
 #app{display:flex;height:100%}
-aside{width:320px;flex:none;background:var(--paper);border-right:1px solid var(--line);overflow:auto;padding:16px}
+aside{width:320px;flex:none;background:var(--side);border-right:1px solid var(--line);overflow:auto;padding:20px 16px 24px}
 #map{flex:1}
-h1{font-size:20px;margin:0 0 12px;font-weight:700}h2{font-size:15px;margin:18px 0 6px}
-label{display:block;font-weight:500;margin:8px 0 2px}
-input,select{width:100%;padding:7px 8px;border:1px solid var(--line);border-radius:4px;font:inherit;background:var(--card);color:var(--ink)}
-.row{display:flex;gap:8px}.row>div{flex:1}
-button{width:100%;margin-top:12px;padding:10px;background:var(--ink);color:var(--paper);border:0;border-radius:4px;font:600 15px Barlow,sans-serif;cursor:pointer}
-button:disabled{opacity:.6;cursor:wait}
-.alt{background:var(--card);color:var(--ink);border:1px solid var(--ink)}.alt.on{background:var(--yel);color:#1c2630}
-.chk{display:flex;gap:8px;align-items:center;font-weight:400;margin:10px 0 0}.chk input{width:auto}
-.selbox{position:absolute;border:2px dashed var(--ink);background:rgba(28,38,48,.12);pointer-events:none;z-index:5}
-.prog{height:6px;background:var(--line);border-radius:3px;margin-top:6px;overflow:hidden}.prog i{display:block;height:100%;background:var(--ink);width:0;transition:width .3s}
-details{margin:10px 0 0}summary{cursor:pointer;font-weight:500}
-.fac-dot{width:11px;height:11px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:-1px}
-.rt{width:auto;margin:4px 0 0 6px;padding:2px 8px;font-size:12px;background:var(--card);color:var(--ink);border:1px solid var(--ink)}
-table.d{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}table.d td,table.d th{padding:3px 4px;border-bottom:1px solid var(--line);text-align:left}
-.hint{color:var(--muted);font-size:13px;margin:6px 0 0}
-.stat{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--line)}
-.legend span{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:6px;vertical-align:-1px}
-.hot{display:block;width:100%;text-align:left;background:var(--card);color:var(--ink);border:1px solid var(--line);margin:6px 0 0;font-weight:500;padding:8px}
-.hot b{color:var(--red)}
-.pin{width:26px;height:26px;border-radius:50%;background:var(--red);color:#fff;font-weight:700;display:grid;place-items:center;border:2px solid #fff;cursor:pointer}
-.epi{width:18px;height:18px;background:var(--ink);border:3px solid #fff;transform:rotate(45deg)}
-.maplibregl-popup-content{font:14px/1.4 Barlow,sans-serif;padding:10px 12px;background:var(--paper);color:var(--ink)}.maplibregl-popup-tip{border-top-color:var(--paper)!important;border-bottom-color:var(--paper)!important}
-.mapctl{position:absolute;top:10px;right:10px;z-index:4;display:flex;gap:6px}.mapctl button{width:auto;margin:0;padding:6px 10px;font-size:13px}
+h1{font:500 18px/24px var(--sans);margin:0 0 20px}
+h2{font:500 12px/16px var(--sans);color:var(--muted);margin:24px 0 8px}
+b,strong{font-weight:500}
+label{display:block;font:500 12px/16px var(--sans);color:var(--text2);margin:12px 0 4px}
+.grp+.grp{margin-top:20px}.grp>label:first-child{margin-top:0}
+input,select{width:100%;height:36px;padding:0 12px;border:1px solid var(--line-2);border-radius:8px;font:400 14px/20px var(--sans);background:var(--surface);color:var(--ink);transition:border-color .15s var(--ease),background-color .15s var(--ease)}
+input[type=number]{font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums}
+input[type=file]{height:auto;padding:8px 12px;font-size:13px}
+select{appearance:none;-webkit-appearance:none;padding-right:32px;background-image:var(--chev);background-repeat:no-repeat;background-position:right 12px center}
+input:hover,select:hover{border-color:var(--muted)}
+input:focus-visible,select:focus-visible,button:focus-visible,summary:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.row{display:flex;gap:8px}.row>div{flex:1;min-width:0}
+button{width:100%;height:36px;margin-top:8px;padding:0 16px;background:var(--ink);color:var(--bg);border:1px solid transparent;border-radius:8px;font:500 14px/20px var(--sans);cursor:pointer;transition:background-color .15s var(--ease),border-color .15s var(--ease),color .15s var(--ease),transform .1s var(--ease)}
+button:hover{background:var(--ink-hover)}button:active{transform:scale(.98)}
+button:disabled{opacity:.5;cursor:wait;transform:none}
+#run{height:40px;margin-top:20px}
+.alt{background:var(--raised);color:var(--ink);border-color:var(--line-2)}.alt:hover{background:var(--hover)}
+.alt.on{background:var(--surface);border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.chk{display:flex;gap:8px;align-items:center;font:400 14px/20px var(--sans);color:var(--ink);margin:12px 0 0}.chk input{width:16px;height:16px;flex:none;accent-color:var(--ink)}
+.selbox{position:absolute;border:1.5px dashed var(--ink);background:rgba(127,127,127,.14);pointer-events:none;z-index:5}
+.prog{height:4px;background:var(--line-2);border-radius:2px;margin-top:8px;overflow:hidden}.prog i{display:block;height:100%;background:var(--ink);width:0}
+details{margin-top:12px}
+summary{display:flex;align-items:center;gap:8px;min-height:32px;cursor:pointer;font:500 14px/20px var(--sans);list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"";flex:none;width:6px;height:6px;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:rotate(-45deg);transition:transform .15s var(--ease)}
+details[open]>summary::before{transform:rotate(45deg)}
+#scn{margin:0;padding-bottom:4px;border-bottom:1px solid var(--line)}#scn>summary{min-height:36px;margin-bottom:4px}#scn:not([open]){padding-bottom:12px}
+#scnSum{margin-left:auto;font:400 12px/16px var(--mono);color:var(--muted)}
+.fac-dot{width:12px;height:12px;border-radius:50%;display:inline-block;margin-right:8px;vertical-align:-1px}
+.rt{width:auto;height:auto;margin:8px 0 0 8px;padding:4px 12px;font-size:12px;line-height:16px;background:var(--raised);color:var(--ink);border-color:var(--line-2)}.rt:hover{background:var(--hover)}
+table.d{width:100%;border-collapse:collapse;font-size:12px;line-height:16px;margin-top:8px;font-variant-numeric:tabular-nums}table.d td,table.d th{padding:4px;border-bottom:1px solid var(--line);text-align:left}
+.hint{font:400 12px/16px var(--sans);color:var(--muted);margin:8px 0 0}
+.stat{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:6px 0;border-bottom:1px solid var(--line)}
+.stat span{color:var(--text2)}.stat b{font:500 13px/20px var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.key{padding:0 0 16px;border-bottom:1px solid var(--line)}.key span{display:block;color:var(--text2);font-size:13px;line-height:20px}.key b{display:block;font:500 32px/40px var(--mono);font-variant-numeric:tabular-nums}
+.legend{display:grid;gap:8px}.legend div{display:flex;align-items:center;gap:8px;font-size:13px;line-height:16px;color:var(--text2)}.legend span{flex:none;width:12px;height:12px;border-radius:3px}
+.hot{display:block;width:100%;height:auto;text-align:left;background:var(--surface);color:var(--ink);border:1px solid var(--line);margin:8px 0 0;font:400 13px/20px var(--sans);padding:8px 12px}.hot:hover{background:var(--raised)}
+.hot b{font:500 12px/16px var(--mono);margin-right:4px}
+.pin{width:28px;height:28px;border-radius:50%;background:var(--ink);color:var(--bg);font:500 12px/1 var(--mono);display:grid;place-items:center;border:2px solid var(--bg);box-shadow:0 1px 4px rgba(0,0,0,.35);cursor:pointer}
+.pin.worst{background:var(--bg);color:var(--ink);border-color:var(--ink)}
+.epi{width:16px;height:16px;background:var(--ink);border:2px solid var(--bg);box-shadow:0 1px 4px rgba(0,0,0,.35);transform:rotate(45deg)}
+.maplibregl-popup-content{font:400 13px/20px var(--sans);padding:12px 16px;background:var(--surface);color:var(--ink);border:1px solid var(--line-2);border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.2)}
+/* colour only the side of the tip that points at the feature (setting all sides turned side-anchored tips into squares) */
+.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip{border-top-color:var(--surface)}
+.maplibregl-popup-anchor-top .maplibregl-popup-tip,.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,.maplibregl-popup-anchor-top-right .maplibregl-popup-tip{border-bottom-color:var(--surface)}
+.maplibregl-popup-anchor-left .maplibregl-popup-tip{border-right-color:var(--surface)}.maplibregl-popup-anchor-right .maplibregl-popup-tip{border-left-color:var(--surface)}
+.maplibregl-popup-close-button{color:var(--muted);font-size:18px;padding:0 6px;width:auto;height:auto;margin:0;background:none;border:0}.maplibregl-popup-close-button:hover{background:none;color:var(--ink)}
+.maplibregl-popup-content b{font-weight:500}
+.mapctl{position:absolute;top:16px;right:16px;z-index:4;display:flex;gap:8px}.mapctl button{width:auto;height:32px;margin:0;padding:0 12px;font-size:13px;box-shadow:0 1px 4px rgba(0,0,0,.2)}
 .shaking{will-change:transform}
-#timeline{display:flex;gap:8px;align-items:center;margin-top:8px}#timeline input[type=range]{padding:0}#tlT{white-space:nowrap;font-size:13px}.maplibregl-popup-content b{font-weight:600}
-#err{color:var(--red);margin-top:8px}
-@media(max-width:700px){#app{flex-direction:column-reverse}aside{width:100%;height:45%}}
+#timeline{display:flex;gap:8px;align-items:center;margin-top:12px}#timeline input[type=range]{height:auto;padding:0;accent-color:var(--ink)}#tlT{white-space:nowrap;min-width:40px;text-align:right;font:400 12px/16px var(--mono)}
+#err{color:var(--neg);margin-top:12px;font-size:13px;line-height:20px}
+@media(max-width:700px){#app{flex-direction:column-reverse}aside{width:100%;height:45%;border-right:0;border-top:1px solid var(--line)}#map{min-height:0}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style></head><body><div id="app">
 <aside>
 <h1 id="title">Earthquake damage estimate</h1>
-<label for="hz">Hazard</label><select id="hz"><option value="earthquake">Earthquake</option><option value="cyclone">Cyclone (wind)</option><option value="flood">Flood (water depth)</option></select>
-<button id="area" type="button" class="alt">Load a new area: select on map</button>
+<details id="scn" open><summary>Scenario<span id="scnSum"></span></summary>
+<div class="grp"><label for="hz">Hazard</label><select id="hz"><option value="earthquake">Earthquake</option><option value="cyclone">Cyclone (wind)</option><option value="flood">Flood (water depth)</option></select>
+<button id="area" type="button" class="alt">Load a new area</button>
 <p class="hint" id="areaMsg">Drag a box over any place (up to about 30 km across) to download its buildings and use them. The server needs internet access.</p>
 <div id="areaBox" hidden><label for="areaSel">Saved areas</label><select id="areaSel"></select>
 <button id="refresh" type="button" class="alt" hidden>Update to the latest Overture release</button></div>
-<div class="row"><div><label for="lat" id="latL">Epicentre latitude</label><input id="lat" type="number" step="any"></div>
+</div>
+<div class="grp"><div class="row"><div><label for="lat" id="latL">Epicentre latitude</label><input id="lat" type="number" step="any"></div>
 <div><label for="lon" id="lonL">Epicentre longitude</label><input id="lon" type="number" step="any"></div></div>
 <div id="hzEq"><div class="row"><div><label for="mag">Magnitude</label><input id="mag" type="number" step="0.1" value="6.5"></div>
 <div><label for="depth">Depth (km)</label><input id="depth" type="number" step="1" value="15"></div></div></div>
@@ -61,11 +107,20 @@ table.d{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}table.
 <div><label for="rake">Rake (&deg;)</label><input id="rake" type="number" min="-180" max="180" step="any" placeholder="auto"></div></div>
 <p class="hint">Rake: 0 strike-slip, 90 reverse (thrust), -90 normal.</p></details>
 <button id="pick" type="button" class="alt">Pick epicentre on map</button><p class="hint">Or drag the diamond marker, or shift-click the map. The epicentre can be outside the city.</p>
-<label class="chk"><input type="checkbox" id="shake"> Shake the screen when the quake runs</label>
-<p class="hint" id="shakeHint">Off by default. Brief and gentle; disabled if your system asks for reduced motion.</p>
+</div>
+<div class="grp"><label class="chk"><input type="checkbox" id="shake"> Shake the screen when the quake runs</label>
+<p class="hint" id="shakeHint">Off by default. Brief and gentle; disabled if your system asks for reduced motion.</p></div>
+</details>
 <button id="run">Run simulation</button><div id="err" role="alert"></div>
 <div id="out" hidden>
-<button id="v3d" type="button" class="alt">Switch to 3D view</button>
+<h2>Summary</h2><div id="sum"></div><details id="conf"><summary>How much to trust this</summary><div id="confBody"><p class="hint">Loading…</p></div></details><div id="unc"></div>
+<h2>Legend</h2><div class="legend">
+<div><span style="background:var(--red)"></span>Severe damage or collapse risk</div>
+<div><span style="background:var(--yel)"></span>Moderate damage</div>
+<div><span style="background:var(--grn)"></span>Light damage</div>
+<div><span style="background:var(--blu)"></span>Little or no damage</div></div>
+<h2>Most at-risk neighbourhoods</h2><button id="worst" type="button" class="alt" hidden>Show worst-case priorities</button><div id="hots"></div>
+<h2>Map and export</h2><button id="v3d" type="button" class="alt">Switch to 3D view</button>
 <label class="chk"><input type="checkbox" id="shrink"> Lower buildings by their collapse chance</label>
 <p class="hint">3D shows each building at about 3 m per storey. The lowering option is a visual cue for expected collapse, not a prediction of how any building falls.</p>
 <button id="dl" type="button" class="alt">Save map as image</button>
@@ -76,13 +131,6 @@ table.d{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}table.
 <div class="row"><div><label for="delay">Alert delay (s)</label><input id="delay" type="number" min="0" max="60" value="5"></div><div><label for="detR">Nearest sensor (km)</label><input id="detR" type="number" min="1" max="200" value="10"></div></div>
 <label class="chk"><input type="checkbox" id="warnOn"> Show warning time (colours)</label>
 <p class="hint">Warning time = S-wave arrival minus (time for the P wave to reach a sensor + alert delay). P about 6 km/s, S about 3.5 km/s, distances from the hypocentre. A simple model, not a real alert system.</p></div>
-<h2>Summary</h2><div id="sum"></div><details id="conf"><summary>How much to trust this</summary><div id="confBody"><p class="hint">Loading…</p></div></details><div id="unc"></div>
-<h2>Legend</h2><div class="legend">
-<div><span style="background:var(--red)"></span>Severe damage or collapse risk</div>
-<div><span style="background:var(--yel)"></span>Moderate damage</div>
-<div><span style="background:var(--grn)"></span>Light damage</div>
-<div><span style="background:var(--blu)"></span>Little or no damage</div></div>
-<h2>Most at-risk neighbourhoods</h2><button id="worst" type="button" class="alt" hidden>Show worst-case priorities</button><div id="hots"></div>
 <h2>Responders</h2>
 <button id="resp" type="button" class="alt">Show hospitals, fire stations and roads</button><p class="hint" id="respMsg">Finds facilities and the road network for this area (first time needs internet, about a minute or two). Facilities in damaged buildings are greyed out.</p>
 <div id="respTools" hidden>
@@ -110,7 +158,14 @@ function typeLine(p){
   const parts=[['URM',p.p_URM],['RC_LOW',p.p_RC_LOW],['RC_MID',p.p_RC_MID]].filter(x=>x[1]>=0.05).sort((a,b)=>b[1]-a[1]);
   return 'Likely '+parts.map(([k,v],i)=>(i?'':'')+TYPE_SHORT[k]+' ('+pct(v)+')').join('; ');
 }
-let map,epi,pins=[],lastRun=null,hot=[],selecting=null,selBox=null,runId=0,is3d=false,runNo=0,cov=null,ctl=null,moveT=null;
+let map,epi,pins=[],lastRun=null,hot=[],selecting=null,selBox=null,runId=0,is3d=false,runNo=0,cov=null,ctl=null,moveT=null,bldPop=null,routePop=null;
+// results tied to one run (access circles, route, waves, warning colours) must not linger on the map after the next run
+function clearRunLayers(){
+  ['acc','route','routeRisk','waves','warn'].forEach(id=>{const s=map&&map.getSource(id);if(s)s.setData(EMPTY)});
+  if(routePop){routePop.remove();routePop=null}
+  stopWaves();$('accOut').innerHTML='';$('dispOut').innerHTML='';
+  if(respReady)loadFacilities().catch(()=>{});        // damage of facility buildings changes with the run
+}
 fetch('/api/meta').then(r=>r.json()).then(m=>{
   if(m.empty){$('areaMsg').innerHTML='<b>No area loaded yet.</b> Press <b>Load a new area</b>, then drag a box over a place (up to about 30 km across). Buildings are downloaded once and saved for next time.'}
   listAreas();initTiles();
@@ -119,62 +174,82 @@ fetch('/api/meta').then(r=>r.json()).then(m=>{
     sources:{osm:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OpenStreetMap contributors'}},
     layers:[{id:'osm',type:'raster',source:'osm',paint:{'raster-saturation':-0.7,'raster-opacity':.8}}]}});
   map.on('click',e=>{if(!picking&&!e.originalEvent.shiftKey)return;$('lon').value=e.lngLat.lng.toFixed(4);$('lat').value=e.lngLat.lat.toFixed(4);placeEpi();if(picking)setTimeout(()=>{picking=false;pickUI()},0)});
-  map.on('load',()=>{placeEpi();let t='light';try{t=localStorage.getItem('quake-theme')||(matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch(e){}setTheme(t)});map.on('moveend',()=>{clearTimeout(moveT);moveT=setTimeout(loadBld,150)});
+  map.on('load',()=>{placeEpi();setTheme(document.documentElement.dataset.theme||'light')});map.on('moveend',()=>{clearTimeout(moveT);moveT=setTimeout(loadBld,150)});
 }).catch(e=>{$('err').textContent='The map failed to start: '+e.message+'. Check your connection or ad-blocker, then reload.'});
-function placeEpi(){const p=[+$('lon').value,+$('lat').value];
+function placeEpi(){if(!map)return;const p=[+$('lon').value,+$('lat').value];if(!isFinite(p[0])||!isFinite(p[1])||Math.abs(p[1])>90)return;
   if(!epi){const el=document.createElement('div');el.style.cursor='grab';el.innerHTML='<div class="epi"></div>';epi=new maplibregl.Marker({element:el,draggable:true}).setLngLat(p).addTo(map);epi.on('dragend',()=>{const l=epi.getLngLat();$('lon').value=l.lng.toFixed(4);$('lat').value=l.lat.toFixed(4)})}else epi.setLngLat(p)}
 ['lat','lon'].forEach(i=>$(i).addEventListener('change',placeEpi));
 let picking=false;
 function pickUI(){$('pick').classList.toggle('on',picking);$('pick').textContent=picking?'Click the map to place the epicentre':'Pick epicentre on map';if(map)map.getCanvas().style.cursor=picking?'crosshair':''}
-$('pick').onclick=()=>{picking=!picking;pickUI()};
+$('pick').onclick=()=>{picking=!picking;if(picking&&selecting){selecting=null;selUI()}pickUI()};
 let hazard='earthquake';
 const HZNAME={earthquake:'Earthquake',cyclone:'Cyclone',flood:'Flood'};
 $('hz').onchange=()=>{hazard=$('hz').value;
   $('hzEq').hidden=hazard!=='earthquake';$('hzCy').hidden=hazard!=='cyclone';$('hzFl').hidden=hazard!=='flood';$('adv').hidden=hazard!=='earthquake';
   $('latL').textContent=hazard==='earthquake'?'Epicentre latitude':hazard==='cyclone'?'Track point latitude':'Latitude';$('lonL').textContent=hazard==='earthquake'?'Epicentre longitude':hazard==='cyclone'?'Track point longitude':'Longitude';
-  $('title').textContent=HZNAME[hazard]+' damage estimate';$('tod').parentElement;};
+  $('title').textContent=HZNAME[hazard]+' damage estimate';};
+// a number from an input, with a readable error when it is empty or out of range (an empty box used to become 0)
+function num(id,name,lo,hi){
+  const raw=$(id).value.trim(),v=+raw;
+  if(raw===''||!isFinite(v))throw new Error(`Enter a number for ${name}.`);
+  if((lo!=null&&v<lo)||(hi!=null&&v>hi))throw new Error(`${name} must be between ${lo} and ${hi}.`);
+  return v;
+}
+let flUploaded=null;                       // the file already on the server, so re-runs do not upload it again
 async function requestRun(){
   const tod=$('tod').value,post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
-  if(hazard==='cyclone')return post('/api/hazard/cyclone',{lat:+$('lat').value,lon:+$('lon').value,heading_deg:+$('cHead').value,speed_ms:+$('cSpeed').value,dp_hpa:+$('cDp').value,rmax_km:+$('cRmax').value,time_of_day:tod});
   if(hazard==='flood'){
     const f=$('flFile').files[0];if(!f)throw new Error('Choose a flood depth GeoTIFF first.');
-    const name='upload-'+f.name.replace(/[^A-Za-z0-9_.-]/g,'_').slice(0,40).replace(/\.tiff?$/i,'');
-    $('flMsg').textContent='Uploading…';const up=await fetch('/api/flood/upload?name='+encodeURIComponent(name),{method:'POST',body:f});
-    if(!up.ok)throw new Error((await up.json()).detail||'Upload failed.');$('flMsg').textContent='Uploaded '+f.name+'.';
-    return post('/api/hazard/flood',{raster:name,scale:+$('flScale').value,time_of_day:tod});
+    if(f.size>300e6)throw new Error('The flood file is larger than 300 MB.');
+    const scale=num('flScale','Depth multiplier',0.1,10);
+    const name='upload-'+f.name.replace(/[^A-Za-z0-9_.-]/g,'_').slice(0,40).replace(/\.tiff?$/i,''),sig=[name,f.size,f.lastModified].join('|');
+    if(flUploaded!==sig){
+      $('flMsg').textContent='Uploading '+f.name+'…';const up=await fetch('/api/flood/upload?name='+encodeURIComponent(name),{method:'POST',body:f});
+      if(!up.ok){$('flMsg').textContent='Upload failed.';throw new Error(await errOf(up,'Upload failed.'))}
+      flUploaded=sig;$('flMsg').textContent='Uploaded '+f.name+'.';
+    }
+    return post('/api/hazard/flood',{raster:name,scale,time_of_day:tod});
   }
-  return post('/api/simulate',{lat:+$('lat').value,lon:+$('lon').value,depth_km:+$('depth').value,magnitude:+$('mag').value,time_of_day:tod,...optNum({strike:'strike',dip:'dip',rake:'rake'})});
+  const lat=num('lat','Latitude',-90,90),lon=num('lon','Longitude',-180,180);
+  if(hazard==='cyclone')return post('/api/hazard/cyclone',{lat,lon,heading_deg:num('cHead','Heading',0,359.99),speed_ms:num('cSpeed','Speed',0,30),dp_hpa:num('cDp','Pressure drop',5,150),rmax_km:num('cRmax','Eye radius',5,200),time_of_day:tod});
+  return post('/api/simulate',{lat,lon,depth_km:num('depth','Depth',0,700),magnitude:num('mag','Magnitude',3,9.5),time_of_day:tod,...optNum({strike:'strike',dip:'dip',rake:'rake'})});
 }
+let running=false;
 $('run').onclick=async()=>{
+  if(running)return;running=true;
   $('err').textContent='';$('run').disabled=true;$('run').textContent='Running…';
   try{
     if(!map)throw new Error('The map did not load. Check your connection or ad-blocker, then reload.');
     const r=await requestRun();
-    if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(typeof e.detail==='string'?e.detail:'Check the inputs (valid coordinates and ranges).')}
+    if(!r.ok)throw new Error(await errOf(r,'Check the inputs (valid coordinates and ranges).'));
     const d=await r.json();runNo=d.run;lastRun={hz:hazard,tod:$('tod').value,mag:+$('mag').value,depth:+$('depth').value,lat:+$('lat').value,lon:+$('lon').value,s:d.summary};show(d);
   }catch(e){$('err').textContent=e.message}
-  $('run').disabled=false;$('run').textContent='Run simulation';
+  running=false;$('run').disabled=false;$('run').textContent='Run simulation';
 };
+$('flFile').addEventListener('change',()=>{flUploaded=null});
+// Enter in any scenario field runs the simulation
+$('scn').addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.tagName==='INPUT'&&e.target.type!=='checkbox'&&e.target.type!=='file'){e.preventDefault();$('run').click()}});
 function drawRupture(f){
   const data=f?{type:'FeatureCollection',features:[f]}:{type:'FeatureCollection',features:[]};
   if(map.getSource('rup')){map.getSource('rup').setData(data);return}
   map.addSource('rup',{type:'geojson',data});
-  map.addLayer({id:'rup-fill',type:'fill',source:'rup',paint:{'fill-color':'#1c2630','fill-opacity':.12}});
-  map.addLayer({id:'rup-line',type:'line',source:'rup',paint:{'line-color':'#1c2630','line-width':2,'line-dasharray':[2,1]}});
+  map.addLayer({id:'rup-fill',type:'fill',source:'rup',paint:{'fill-color':mapInk(),'fill-opacity':.12}});
+  map.addLayer({id:'rup-line',type:'line',source:'rup',paint:{'line-color':mapInk(),'line-width':2,'line-dasharray':[2,1]}});
 }
 function show(d){
   if(map.getSource('cells')){map.getSource('cells').setData(d.cells)}
   else{
     map.addSource('bld',{type:'geojson',data:{type:'FeatureCollection',features:[]}});map.addSource('far',{type:'geojson',data:{type:'FeatureCollection',features:[]}});map.addSource('cells',{type:'geojson',data:d.cells});
-    map.addLayer({id:'heat',type:'heatmap',source:'cells',maxzoom:16,paint:{
-      'heatmap-weight':['interpolate',['linear'],['get','mean_ds'],0,0,0.5,0.25,1.5,0.6,2.5,1],
-      'heatmap-radius':['interpolate',['linear'],['zoom'],10,28,15,70],
-      'heatmap-intensity':1.2,
-      'heatmap-color':['interpolate',['linear'],['heatmap-density'],0,'rgba(59,125,216,0)',.15,'rgba(59,125,216,.55)',.4,'rgba(58,166,85,.65)',.65,'rgba(242,183,5,.75)',.9,'rgba(215,38,61,.85)'],
-      'heatmap-opacity':['interpolate',['linear'],['zoom'],13,.9,16,.2]}});
+    // Damage layer: every 500 m cell is a soft disc coloured by its own mean damage state. (A density heatmap saturated to solid
+    // red over a big city: it showed how many cells overlap, not how damaged they are.)
+    map.addLayer({id:'heat',type:'circle',source:'cells',maxzoom:16,layout:{'circle-sort-key':['get','mean_ds']},paint:{
+      'circle-color':['interpolate',['linear'],['get','mean_ds'],0,COL[0],1,COL[1],2,COL[2],3,COL[3]],
+      'circle-radius':['interpolate',['exponential',2],['zoom'],9,5,10,9,11,18,13,66,15,240],
+      'circle-blur':1,
+      'circle-opacity':['interpolate',['linear'],['zoom'],12,.3,16,.08]}});
     map.addLayer({id:'bld',type:'fill',source:'bld',minzoom:15,paint:{
       'fill-color':['match',['get','cat'],0,COL[0],1,COL[1],2,COL[2],COL[3]],'fill-opacity':.85}});
-    map.addLayer({id:'bld-line',type:'line',source:'bld',minzoom:15,paint:{'line-color':'#1c2630','line-width':.5,'line-opacity':.5}});
+    map.addLayer({id:'bld-line',type:'line',source:'bld',minzoom:15,paint:{'line-color':mapInk(),'line-width':.5,'line-opacity':.5}});
     map.addLayer({id:'far3d',type:'fill-extrusion',source:'far',minzoom:13.5,layout:{visibility:is3d?'visible':'none'},paint:{
       'fill-extrusion-color':['match',['get','cat'],0,COL[0],1,COL[1],2,COL[2],COL[3]],
       'fill-extrusion-height':h3(),'fill-extrusion-base':0,'fill-extrusion-opacity':.9}});
@@ -186,30 +261,35 @@ function show(d){
       if(e.originalEvent.shiftKey||picking||selecting)return;
       const f=map.queryRenderedFeatures(e.point,{layers:['bldv-3d','bldv-2d','bld3d','far3d','bld'].filter(id=>map.getLayer(id)&&map.getLayoutProperty(id,'visibility')!=='none')})[0];
       if(!f||f.id==null)return;
-      const pop=new maplibregl.Popup().setLngLat(e.lngLat).setHTML('Loading…').addTo(map);
+      if(bldPop)bldPop.remove();
+      const pop=bldPop=new maplibregl.Popup().setLngLat(e.lngLat).setHTML('Loading…').addTo(map);
       try{
         const r=await fetch(`/api/building/${f.id}?run=${runNo}`),p=await r.json();
         if(!r.ok)throw new Error(typeof p.detail==='string'?p.detail:'Could not load this building.');
+        const hz=lastRun?lastRun.hz:hazard;     // the hazard of the run on the map, not whatever the selector shows now
         pop.setHTML(`<b>${CAT[p.cat]}</b><br>${USE[p.use]?USE[p.use]+'<br>':''}${typeLine(p)}<br>${p.levels} storey${p.levels>1?'s':''}${SRC[p.levels_src]?' ('+SRC[p.levels_src]+')':''}<br>`+
-          `${p.mmi!=null?`Shaking: MMI ${p.mmi} (${p.pga} g)${p.vs30?', soil Vs30 '+p.vs30+' m/s':''}`:`${hazard==='flood'?'Water depth':'Peak gust'}: ${p.intensity} ${hazard==='flood'?'m':'m/s'}`}<br>Chance of heavy damage: ${pct(p.p_extensive_mean!=null?p.p_extensive_mean:p.p_extensive)}${p.p_extensive_p90!=null?' (up to '+pct(p.p_extensive_p90)+' in a bad case)':''}<br>Chance of collapse: ${pct(p.p_collapse)}<br>`+
+          `${p.mmi!=null?`Shaking: MMI ${p.mmi} (${p.pga} g)${p.vs30?', soil Vs30 '+p.vs30+' m/s':''}`:`${hz==='flood'?'Water depth':'Peak gust'}: ${p.intensity} ${hz==='flood'?'m':'m/s'}`}<br>Chance of heavy damage: ${pct(p.p_extensive_mean!=null?p.p_extensive_mean:p.p_extensive)}${p.p_extensive_p90!=null?' (up to '+pct(p.p_extensive_p90)+' in a bad case)':''}<br>Chance of collapse: ${pct(p.p_collapse)}<br>`+
           `Est. occupants (${TOD[lastRun?lastRun.tod:'night']}): ${p.occupants} (about ${Math.round(p.risk)} at risk)`);
       }catch(err){pop.setHTML(esc(err.message))}
     });
     BL.concat(['bldv-3d','bldv-2d']).forEach(id=>{map.on('mouseenter',id,()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave',id,()=>map.getCanvas().style.cursor='')});
   }
   drawRupture(d.rupture||d.track);
+  if(bldPop){bldPop.remove();bldPop=null}clearRunLayers();
   tileMode=false;syncVis();setupTiles(d);
   setTimeout(()=>{prepareWaves(d);shakeNow(d.summary.max_mmi||0)},0);
   pins.forEach(m=>m.remove());pins=[];hot=[];$('hots').innerHTML='';
   const s=d.summary;
-  $('sum').innerHTML=[['Buildings assessed',s.buildings],['Severe damage or collapse risk',s.severe],['Moderate damage or worse',s.heavy],
+  const rows=[['Buildings assessed',s.buildings],['Severe damage or collapse risk',s.severe],['Moderate damage or worse',s.heavy],
     ['Expected collapses',s.expected_collapses],...(s.casualties?[['Estimated deaths',s.casualties.deaths],['Estimated injured',s.casualties.injury_1+s.casualties.injury_2+s.casualties.injury_3]]:[]),['People at risk ('+(TOD[s.time_of_day]||'night')+')',s.people_at_risk],...(s.peak||[['Peak shaking (g)',s.max_pga],['Peak intensity (MMI)',s.max_mmi]]),...(s.vs30_median!=null?[['Soil stiffness (Vs30)',(s.soil||'').startsWith('USGS')?s.vs30_median+' m/s':'flat '+s.vs30_median+' m/s']]:[])]
-    .map(([k,v])=>`<div class="stat"><span>${k}</span><b>${v.toLocaleString()}</b></div>`).join('')+dataNotes(s);
+  const prK='People at risk ('+(TOD[s.time_of_day]||'night')+')';
+  $('sum').innerHTML=`<div class="key"><span>${prK}</span><b>${Number(s.people_at_risk).toLocaleString()}</b></div>`+
+    rows.filter(r=>r[0]!==prK).map(([k,v])=>`<div class="stat"><span>${k}</span><b>${typeof v==='number'?v.toLocaleString():v}</b></div>`).join('')+dataNotes(s);
   const run=++runId;
   lastData=d;mcRep=null;worstOn=false;
   $('unc').innerHTML='';$('worst').hidden=true;$('worst').textContent='Show worst-case priorities';$('worst').classList.remove('on');
   drawPriority(run);
-  $('out').hidden=false;resetBld();loadBld();
+  $('out').hidden=false;scnFold();resetBld();loadBld();
   if(d.uncertainty_job)pollUnc(run,d.run);
 }
 // priority pins/list: expected values from the quick run, or worst-case (90th percentile) once the Monte Carlo is done
@@ -225,11 +305,11 @@ function drawPriority(run){
     :lastData.cells.features.filter(f=>f.properties.rank).sort((a,b)=>a.properties.rank-b.properties.rank).map(f=>({p:f.properties,c:f.geometry.coordinates}));
   items.forEach(({p,c})=>{
     hot.push({rank:p.rank,c});
-    const el=document.createElement('div');el.className='pin';el.textContent=p.rank;if(worst)el.style.background='#7a1020';
+    const el=document.createElement('div');el.className='pin';el.textContent=p.rank;if(worst)el.classList.add('worst');
     const pop=new maplibregl.Popup({offset:16}).setHTML(cardHtml(p,null));
-    pins.push(new maplibregl.Marker({element:el}).setLngLat(c).setPopup(pop).addTo(map));
+    const mk=new maplibregl.Marker({element:el}).setLngLat(c).setPopup(pop).addTo(map);pins.push(mk);
     const b=document.createElement('button');b.className='hot';b.innerHTML=rowHtml(p,null);
-    b.onclick=()=>{map.flyTo({center:c,zoom:15});pins[p.rank-1].togglePopup()};
+    b.onclick=()=>{map.flyTo({center:c,zoom:Math.max(map.getZoom(),15)});if(!pop.isOpen())mk.togglePopup()};
     const wrap=document.createElement('div');wrap.style.display='flex';wrap.appendChild(b);
     if(respReady&&!worst){const rt=document.createElement('button');rt.className='rt';rt.textContent='Route';rt.onclick=()=>showRoute(p.rank);wrap.appendChild(rt)}
     $('hots').appendChild(wrap);
@@ -279,16 +359,31 @@ function ensureRespLayers(){
     new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<b>${esc(p.name||FAC_NAME[p.kind])}</b><br>${FAC_NAME[p.kind]}${p.beds?`, ${p.beds} beds`:''}${lastRun&&p.kind!=='open_space'?`<br>Chance its building is heavily damaged: ${pct(+p.p_damaged)}${p.may_not_work===true||p.may_not_work==='true'?'<br><b>May not be working.</b>':''}`:''}`).addTo(map)});
   map.on('mouseenter','fac-c',()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave','fac-c',()=>map.getCanvas().style.cursor='');
 }
-async function waitJob(id,msgEl){
-  for(;;){const j=await (await fetch('/api/jobs/'+id)).json();msgEl.innerHTML=`${esc(j.message)}<div class="prog"><i style="width:${Math.round(j.progress*100)}%"></i></div>`;
-    if(j.state==='done')return j.result;if(j.state==='error')throw new Error(j.error||'Failed');await new Promise(ok=>setTimeout(ok,1000))}}
+// one poller for every background job; stops (instead of looping forever) when the server no longer knows the job
+async function waitJob(id,msgEl,lost){
+  for(let miss=0;;){
+    let j=null;
+    try{const r=await fetch('/api/jobs/'+id);if(r.status===404)throw new Error(lost||'The server lost track of this task (was it restarted?). Try again.');if(r.ok)j=await r.json()}
+    catch(e){if(e instanceof TypeError&&++miss<10){await new Promise(ok=>setTimeout(ok,2000));continue}throw e}   // brief network blips are retried
+    if(j){miss=0;msgEl.innerHTML=`${esc(j.message||'Working…')}<div class="prog"><i style="width:${Math.round((j.progress||0)*100)}%"></i></div>`;
+      if(j.state==='done')return j.result;if(j.state==='error')throw new Error(j.error||'Failed');}
+    await new Promise(ok=>setTimeout(ok,1000))}}
+// readable message from a failed response: FastAPI sends a string, or a list of field errors for invalid input
+async function errOf(r,fallback){
+  const d=await r.json().catch(()=>({}));
+  if(typeof d.detail==='string')return d.detail;
+  if(Array.isArray(d.detail)&&d.detail.length)return d.detail.map(x=>{const f=(x.loc||[]).slice(-1)[0];return (FIELD[f]||f||'Input')+': '+String(x.msg||'invalid').replace(/^Value error, /,'')}).join('; ');
+  return fallback||('Request failed (HTTP '+r.status+').');
+}
+const FIELD={lat:'Latitude',lon:'Longitude',magnitude:'Magnitude',depth_km:'Depth',strike:'Strike',dip:'Dip',rake:'Rake',heading_deg:'Heading',speed_ms:'Speed',dp_hpa:'Pressure drop',rmax_km:'Eye radius',scale:'Depth multiplier',fire_station:'Fire teams',police:'Police',ambulance:'Ambulances',png:'Map image'};
 async function loadFacilities(){
-  const g=await (await fetch('/api/facilities')).json();ensureRespLayers();map.getSource('fac').setData(g);
+  const r=await fetch('/api/facilities');if(!r.ok)throw new Error(await errOf(r,'Could not load facilities.'));
+  const g=await r.json();ensureRespLayers();map.getSource('fac').setData(g);
 }
 $('resp').onclick=async()=>{
   if(!map)return;const m=$('respMsg');$('resp').disabled=true;
   try{
-    const r=await fetch('/api/responders/prepare',{method:'POST'});if(!r.ok)throw new Error((await r.json()).detail||'Could not start.');
+    const r=await fetch('/api/responders/prepare',{method:'POST'});if(!r.ok)throw new Error(await errOf(r,'Could not start.'));
     ensureRespLayers();const res=await waitJob((await r.json()).job,m);
     await loadFacilities();respReady=true;$('respTools').hidden=false;if(lastData)drawPriority(++runId);
     const k=res.facilities||{};m.innerHTML=`Found ${k.hospital||0} hospitals, ${k.clinic||0} clinics, ${k.fire_station||0} fire stations, ${k.police||0} police stations and ${k.shelter||0} shelters; ${res.road_segments.toLocaleString()} street segments.`+(res.notes&&res.notes.length?'<br>'+res.notes.map(esc).join('<br>'):'')
@@ -300,28 +395,29 @@ $('acc').onclick=async()=>{
   const o=$('accOut');o.innerHTML='';if(!lastRun){o.textContent='Run a simulation first.';return}
   $('acc').disabled=true;
   try{
-    const r=await fetch('/api/access',{method:'POST'});const d=await r.json();if(!r.ok)throw new Error(d.detail||'Could not start.');
-    const res=await waitJob(d.job,o);const a=await (await fetch('/api/access/'+res.run)).json();
+    const r=await fetch('/api/access',{method:'POST'});if(!r.ok)throw new Error(await errOf(r,'Could not start.'));const d=await r.json();
+    const res=await waitJob(d.job,o);const ar=await fetch('/api/access/'+res.run);if(!ar.ok)throw new Error(await errOf(ar,'Could not load the access result.'));const a=await ar.json();
     ensureRespLayers();map.getSource('acc').setData(a.cells);await loadFacilities();
-    const s=a.summary;o.innerHTML=`<div class="stat"><span>People within 30 min of a working hospital</span><b>${pct(s.share_within_30min)}</b></div><div class="stat"><span>People with no route to one</span><b>${pct(s.share_no_access)}</b></div><div class="stat"><span>Typical travel time</span><b>${s.median_minutes} min</b></div><div class="stat"><span>Hospitals that may not work</span><b>${s.hospitals_may_not_work} of ${s.hospitals}</b></div><div class="stat"><span>Streets likely blocked</span><b>${s.streets_likely_blocked.toLocaleString()} of ${s.streets.toLocaleString()}</b></div><p class="hint">Green to red circles: minutes to the nearest working hospital. Debris-blocking constants are placeholders, not calibrated.</p>`;
+    const s=a.summary;o.innerHTML=`<div class="stat"><span>People within 30 min of a working hospital</span><b>${pct(s.share_within_30min)}</b></div><div class="stat"><span>People with no route to one</span><b>${pct(s.share_no_access)}</b></div><div class="stat"><span>Typical travel time</span><b>${s.median_minutes} min</b></div><div class="stat"><span>Hospitals that may not work</span><b>${s.hospitals_may_not_work} of ${s.hospitals}</b></div><div class="stat"><span>Streets likely blocked</span><b>${s.streets_likely_blocked.toLocaleString()} of ${s.streets.toLocaleString()}</b></div><p class="hint">Green to red circles: minutes to the nearest working hospital. Debris blocking follows Anelli et al. (2020): a street is blocked if under 3.5 m stays free; not validated against observed blockages.</p>`;
   }catch(e){o.textContent=e.message}
   $('acc').disabled=false;
 };
 async function showRoute(rank){
   try{
-    const r=await fetch(`/api/route?rank=${rank}&source=${encodeURIComponent($('routeFrom').value)}`);const g=await r.json();
-    if(!r.ok)throw new Error(typeof g.detail==='string'?g.detail:'No route.');
+    const r=await fetch(`/api/route?rank=${rank}&source=${encodeURIComponent($('routeFrom').value)}`);
+    if(!r.ok)throw new Error(await errOf(r,'No route.'));const g=await r.json();
     ensureRespLayers();map.getSource('route').setData(g);
     map.getSource('routeRisk').setData({type:'FeatureCollection',features:g.properties.risky_segments.map(c=>({type:'Feature',geometry:{type:'LineString',coordinates:c},properties:{}}))});
     const c=g.geometry.coordinates,b=c.reduce((bb,p)=>bb.extend(p),new maplibregl.LngLatBounds(c[0],c[0]));map.fitBounds(b,{padding:80,duration:700});
-    new maplibregl.Popup().setLngLat(c[Math.floor(c.length/2)]).setHTML(`<b>From ${esc(g.properties.facility)}</b><br>${g.properties.time_min} min free-flow (${g.properties.expected_time_min} min with likely blockages)<br>Chance the route is open: ${pct(g.properties.p_open)}`).addTo(map);
+    if(routePop)routePop.remove();
+    routePop=new maplibregl.Popup().setLngLat(c[Math.floor(c.length/2)]).setHTML(`<b>From ${esc(g.properties.facility)}</b><br>${g.properties.time_min} min free-flow (${g.properties.expected_time_min} min with likely blockages)<br>Chance the route is open: ${pct(g.properties.p_open)}`).addTo(map);
   }catch(e){$('accOut').textContent=e.message}
 }
 $('disp').onclick=async()=>{
   const o=$('dispOut');o.textContent='Working…';
   try{
     const r=await fetch('/api/dispatch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fire_station:+$('tFire').value,police:+$('tPol').value,ambulance:+$('tAmb').value})});
-    const d=await r.json();if(!r.ok)throw new Error(typeof d.detail==='string'?d.detail:'Check the numbers.');
+    if(!r.ok)throw new Error(await errOf(r,'Check the numbers.'));const d=await r.json();
     o.innerHTML=d.assignments.length?`<table class="d"><tr><th>#</th><th>Team</th><th>Go to</th><th>Min</th><th>Open</th></tr>`+d.assignments.map(a=>`<tr><td>${a.order}</td><td>${esc(a.team)}<br><span class="hint">${esc(a.facility)}</span></td><td>area ${a.cell_rank} (${a.people_at_risk.toLocaleString()} at risk)</td><td>${a.travel_min}</td><td>${pct(a.p_route_open==null?0:a.p_route_open)}</td></tr>`).join('')+'</table><p class="hint">Teams go where they reach the most people at risk per minute. Suggestion for planning only.</p>':'No working facilities of those kinds were found.';
   }catch(e){o.textContent=e.message}
 };
@@ -331,7 +427,7 @@ $('disp').onclick=async()=>{
 const LV={good:['#3aa655','Good'],caution:['#f2b705','Use with care'],poor:['#d7263d','Weak']};
 $('conf').addEventListener('toggle',async()=>{
   if(!$('conf').open)return;
-  try{const d=await (await fetch('/api/confidence')).json();
+  try{const r=await fetch('/api/confidence');if(!r.ok)throw new Error();const d=await r.json();
     $('confBody').innerHTML=d.items.map(i=>`<div style="margin:6px 0"><span class="fac-dot" style="background:${LV[i.level][0]}"></span><b>${esc(i.topic)}</b> <span class="hint">(${LV[i.level][1]})</span><br><span class="hint">${esc(i.text)}</span></div>`).join('');
   }catch(e){$('confBody').textContent='Could not load.'}
 });
@@ -342,12 +438,12 @@ async function getReport(kind){
   try{
     if(kind==='pdf'){
       const div=$('map');await new Promise(ok=>(map.loaded()&&!map.isMoving())?ok():map.once('idle',ok));
-      const blob=await new Promise(ok=>makePng(0,0,div.clientWidth,div.clientHeight,ok));
+      const blob=await new Promise(ok=>makePng(0,0,div.clientWidth,div.clientHeight,ok,2400));
       const b64=await new Promise(ok=>{const fr=new FileReader();fr.onload=()=>ok(String(fr.result).split(',')[1]);fr.readAsDataURL(blob)});
       const r=await fetch(`/api/report/${runNo}/image`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({png:b64})});
-      if(!r.ok)throw new Error((await r.json()).detail||'Could not send the map image.');
+      if(!r.ok)throw new Error(await errOf(r,'Could not send the map image.'));
     }
-    const r=await fetch(`/api/report/${runNo}.${kind}`);if(!r.ok)throw new Error((await r.json()).detail||'Could not build the report.');
+    const r=await fetch(`/api/report/${runNo}.${kind}`);if(!r.ok)throw new Error(await errOf(r,'Could not build the report.'));
     const b=await r.blob(),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`quake-report-${runNo}.${kind}`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),3000);
     m.textContent='Report saved.';
   }catch(e){m.textContent=e.message}
@@ -376,8 +472,9 @@ function drawWaves(t){
   for(const [w,v] of [['P',VP],['S',VS]]){const r=waveRadius(v,t,depth);if(r>0.05)feats.push({type:'Feature',properties:{w},geometry:{type:'LineString',coordinates:circlePoly(lon,lat,r)}})}
   map.getSource('waves').setData({type:'FeatureCollection',features:feats});$('tl').value=t;$('tlT').textContent=Math.round(t)+' s';
 }
+function stopWaves(){playing=false;cancelAnimationFrame(raf);$('play').textContent='Play wave animation'}
 function prepareWaves(d){
-  if(hazard!=='earthquake'){$('waveBox').hidden=true;return}
+  if(!lastRun||lastRun.hz!=='earthquake'){$('waveBox').hidden=true;$('warnOn').checked=false;if(map.getLayer('warn-c'))map.setLayoutProperty('warn-c','visibility','none');return}
   $('waveBox').hidden=false;ensureWaveLayers();
   const far=Math.max(...d.cells.features.map(f=>hyp(f.geometry.coordinates)));timeEnd=Math.max(20,Math.ceil(far/VS*1.1));
   $('tl').max=timeEnd;$('tl').value=0;$('tlT').textContent='0 s';
@@ -399,12 +496,17 @@ $('play').onclick=()=>{
   raf=requestAnimationFrame(step);
 };
 // dark theme (remembered in localStorage when available)
-function setTheme(t){
+// map lines drawn in "ink" (rupture, building outlines) must flip with the theme or they vanish on the dark basemap
+const mapInk=()=>document.documentElement.dataset.theme==='dark'?'#e6e6e6':'#1c2630';
+function setTheme(t,save){
   document.documentElement.dataset.theme=t;$('theme').textContent=t==='dark'?'Light':'Dark';
-  try{localStorage.setItem('quake-theme',t)}catch(e){}
-  if(map&&map.getLayer('osm')){map.setPaintProperty('osm','raster-brightness-max',t==='dark'?0.32:1);map.setPaintProperty('osm','raster-brightness-min',0);map.setPaintProperty('osm','raster-contrast',t==='dark'?0.15:0)}
+  if(save)try{localStorage.setItem('quake-theme',t)}catch(e){}
+  if(!map)return;
+  if(map.getLayer('osm')){map.setPaintProperty('osm','raster-brightness-max',t==='dark'?0.32:1);map.setPaintProperty('osm','raster-brightness-min',0);map.setPaintProperty('osm','raster-contrast',t==='dark'?0.15:0)}
+  [['rup-fill','fill-color'],['rup-line','line-color'],['bld-line','line-color'],['bldv-line','line-color']].forEach(([id,p])=>{if(map.getLayer(id))map.setPaintProperty(id,p,mapInk())});
 }
-$('theme').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
+$('theme').textContent=document.documentElement.dataset.theme==='dark'?'Light':'Dark';
+$('theme').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark',true);
 // shake effect: short, decaying jitter scaled to the shaking strength; off by default and off for reduced-motion users
 const reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
 if(reduce){$('shake').disabled=true;$('shakeHint').textContent='Disabled because your system asks for reduced motion.'}
@@ -416,13 +518,14 @@ function shakeNow(mmi){
 $('dl').onclick=()=>{if(map){selecting=selecting==='png'?null:'png';selUI()}};
 $('area').onclick=()=>{if(map){selecting=selecting==='area'?null:'area';selUI()}};
 function selUI(){
+  if(selecting&&picking){picking=false;pickUI()}
   $('dl').classList.toggle('on',selecting==='png');$('area').classList.toggle('on',selecting==='area');
   $('dl').textContent=selecting==='png'?'Drag on the map to select (Esc to cancel)':'Save map as image';
-  $('area').textContent=selecting==='area'?'Drag a box over the area (Esc to cancel)':'Load a new area: select on map';
+  $('area').textContent=selecting==='area'?'Drag a box over the area (Esc to cancel)':'Load a new area';
   map.getCanvas().style.cursor=selecting?'crosshair':'';
   if(selecting){map.dragPan.disable();map.touchZoomRotate.disable()}else{map.dragPan.enable();map.touchZoomRotate.enable()}
 }
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&selecting){selecting=null;selUI()}});
+document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;if(selecting){selecting=null;selUI()}if(picking){picking=false;pickUI()}});
 (function(){
   const div=$('map');let start=null;
   const pos=e=>{const r=div.getBoundingClientRect();return[Math.max(0,Math.min(e.clientX-r.left,r.width)),Math.max(0,Math.min(e.clientY-r.top,r.height))]};
@@ -448,20 +551,16 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&selecting){selectin
   });
 })();
 let lastBox=null;
-async function pollJob(id,m){
-  for(;;){
-    const r=await fetch('/api/jobs/'+id);if(!r.ok)throw new Error('Lost track of the download.');
-    const j=await r.json();
-    m.innerHTML=`${esc(j.message)}<div class="prog"><i style="width:${Math.round(j.progress*100)}%"></i></div>`;
-    if(j.state==='done')return j.result;
-    if(j.state==='error')throw new Error(j.error||'Download failed.');
-    await new Promise(ok=>setTimeout(ok,1000));
-  }
-}
+const pollJob=(id,m)=>waitJob(id,m,'Lost track of the download (was the server restarted?). Try again.');
 function applyArea(d){
   tileInfo=null;tileMode=false;tileAttrs=null;lastData=null;if(map&&map.getSource('bldv'))removeTileLayers();setTimeout(initTiles,500);
   uncTok++;runId++;runNo=0;resetBld();pins.forEach(p=>p.remove());pins=[];hot=[];lastRun=null;$('hots').innerHTML='';$('out').hidden=true;
-  ['cells','bld','far','rup'].forEach(id=>{const src=map.getSource(id);if(src)src.setData({type:'FeatureCollection',features:[]})});
+  ['cells','bld','far','rup','fac'].forEach(id=>{const src=map.getSource(id);if(src)src.setData({type:'FeatureCollection',features:[]})});
+  // the responder layer belongs to the old area: hide its tools until it is prepared again for this one
+  respReady=false;clearRunLayers();$('respTools').hidden=true;$('waveBox').hidden=true;
+  $('respMsg').textContent='Finds facilities and the road network for this area (first time needs internet, about a minute or two). Facilities in damaged buildings are greyed out.';
+  if(bldPop){bldPop.remove();bldPop=null}
+  $('scn').open=true;$('err').textContent='';
   map.fitBounds([[d.bounds[0],d.bounds[1]],[d.bounds[2],d.bounds[3]]],{padding:40,duration:800});
   $('lon').value=d.center[0].toFixed(4);$('lat').value=d.center[1].toFixed(4);placeEpi();
 }
@@ -470,8 +569,8 @@ async function loadArea(w,s,e,n,refresh){
   const m=$('areaMsg');m.textContent='Starting…';$('area').disabled=true;$('refresh').disabled=true;
   try{
     const r=await fetch('/api/area',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({w,s,e,n,refresh:!!refresh})});
+    if(!r.ok)throw new Error(await errOf(r,'Check the box and try again.'));
     const d=await r.json();
-    if(!r.ok)throw new Error(typeof d.detail==='string'?d.detail:'Check the box and try again.');
     const res=await pollJob(d.job,m);       // the map stays usable while this runs
     applyArea(res);
     m.innerHTML=`Loaded ${res.buildings.toLocaleString()} buildings (about ${res.people.toLocaleString()} people)${res.cached?' from saved data':''}. <a href="/api/area/download" download>Download as parquet</a>`+(res.update_note?`<br>${esc(res.update_note)}`:'');
@@ -489,18 +588,20 @@ async function listAreas(){
   }catch(e){}
 }
 $('areaSel').onchange=async()=>{
-  const m=$('areaMsg');m.textContent='Switching area…';
+  const m=$('areaMsg'),sel=$('areaSel');m.textContent='Switching area…';sel.disabled=$('area').disabled=$('run').disabled=true;
   try{
-    const r=await fetch(`/api/areas/${encodeURIComponent($('areaSel').value)}/activate`,{method:'POST'});
-    const d=await r.json();if(!r.ok)throw new Error(d.detail||'Could not switch.');
+    const r=await fetch(`/api/areas/${encodeURIComponent(sel.value)}/activate`,{method:'POST'});
+    if(!r.ok)throw new Error(await errOf(r,'Could not switch.'));
+    const d=await r.json();
     applyArea(d);m.textContent=`Using ${d.buildings.toLocaleString()} buildings (about ${d.people.toLocaleString()} people).`;$('refresh').hidden=true;
-  }catch(err){m.textContent=err.message}
+  }catch(err){m.textContent=err.message;listAreas()}     // put the selector back on the area actually in use
+  sel.disabled=$('area').disabled=false;$('run').disabled=running;
 };
-function makePng(x,y,w,h,cb){
+function makePng(x,y,w,h,cb,maxW){
   const cv=map.getCanvas(),k=cv.width/cv.clientWidth,S=v=>Math.round(v*k);
   const W=Math.max(S(w),S(520)),hd=S(58),ft=S(110),H=hd+S(h)+ft,ox=Math.round((W-S(w))/2);
   const o=document.createElement('canvas');o.width=W;o.height=H;const c=o.getContext('2d');
-  const F=(px,wt)=>`${wt||400} ${S(px)}px Barlow, system-ui, sans-serif`;
+  const F=(px,wt)=>`${wt>=600?500:400} ${S(px)}px 'IBM Plex Sans', system-ui, sans-serif`;
   c.fillStyle='#fff';c.fillRect(0,0,W,H);
   c.drawImage(cv,S(x),S(y),S(w),S(h),ox,hd,S(w),S(h));
   const at=ll=>{const p=map.project(ll);return[ox+S(p.x-x),hd+S(p.y-y)]};
@@ -513,18 +614,22 @@ function makePng(x,y,w,h,cb){
   c.textAlign='left';c.textBaseline='alphabetic';
   c.fillStyle='#1c2630';c.font=F(18,700);c.fillText(((lastRun&&HZNAME[lastRun.hz])||'Earthquake')+' damage estimate',S(14),S(26));
   c.font=F(13);c.fillStyle='#41505d';
-  c.fillText(lastRun?`${lastRun.hz==='earthquake'?`Magnitude ${lastRun.mag}, depth ${lastRun.depth} km, epicentre`:HZNAME[lastRun.hz]+' scenario at'} ${lastRun.lat.toFixed(3)}, ${lastRun.lon.toFixed(3)}, ${TOD[lastRun.tod]||'night'}  |  ${new Date().toLocaleDateString()}`:'No simulation run',S(14),S(47));
+  c.fillText(lastRun?`${lastRun.hz==='earthquake'?`Magnitude ${lastRun.mag}, depth ${lastRun.depth} km, epicentre ${lastRun.lat.toFixed(3)}, ${lastRun.lon.toFixed(3)}`:lastRun.hz==='flood'?'Flood scenario':`Cyclone track through ${lastRun.lat.toFixed(3)}, ${lastRun.lon.toFixed(3)}`}, ${TOD[lastRun.tod]||'night'}  |  ${new Date().toLocaleDateString()}`:'No simulation run',S(14),S(47));
   const fy=hd+S(h);c.fillStyle='#cfd6db';c.fillRect(0,fy,W,S(1));
   [['Little or none',COL[0]],['Light',COL[1]],['Moderate',COL[2]],['Severe / collapse',COL[3]]].forEach(([t,col],i)=>{
     c.fillStyle=col;c.fillRect(S(14+i*125),fy+S(14),S(12),S(12));c.fillStyle='#1c2630';c.font=F(12);c.fillText(t,S(32+i*125),fy+S(24))});
   if(lastRun){const s=lastRun.s;c.font=F(12);c.fillStyle='#1c2630';
     const rg=lastRun.ranges?` (${Math.round(lastRun.ranges.people_at_risk.p10).toLocaleString()} to ${Math.round(lastRun.ranges.people_at_risk.p90).toLocaleString()}, 10-90%)`:'';
-    c.fillText(`Whole city: ${s.buildings.toLocaleString()} buildings, ${s.heavy.toLocaleString()} moderate or worse, ${s.people_at_risk.toLocaleString()} people at risk${rg}, peak MMI ${s.max_mmi}`,S(14),fy+S(48))}
+    const pk=s.max_mmi!=null?`, peak MMI ${s.max_mmi}`:(s.peak&&s.peak[0]?`, ${s.peak[0][0].toLowerCase()} ${s.peak[0][1]}`:'');
+    c.fillText(`Whole area: ${s.buildings.toLocaleString()} buildings, ${s.heavy.toLocaleString()} moderate or worse, ${s.people_at_risk.toLocaleString()} people at risk${rg}${pk}`,S(14),fy+S(48))}
   c.font=F(11);c.fillStyle='#5b6874';
   c.fillText('Estimate for planning, not confirmed damage.',S(14),fy+S(70));
   c.fillText('Map © OpenStreetMap contributors. Buildings: Overture Maps Foundation, OpenStreetMap contributors.',S(14),fy+S(88));
-  o.toBlob(b=>{if(cb){cb(b);return}const a=document.createElement('a');a.href=URL.createObjectURL(b);
-    a.download='quake-map'+(lastRun?'-M'+lastRun.mag:'')+'.png';document.body.appendChild(a);a.click();a.remove();
+  let out=o;
+  if(maxW&&W>maxW){out=document.createElement('canvas');out.width=maxW;out.height=Math.round(H*maxW/W);   // keeps the report upload small
+    const g=out.getContext('2d');g.imageSmoothingQuality='high';g.drawImage(o,0,0,out.width,out.height)}
+  out.toBlob(b=>{if(cb){cb(b);return}const a=document.createElement('a');a.href=URL.createObjectURL(b);
+    a.download='quake-map'+(lastRun?'-'+(lastRun.hz==='earthquake'?'M'+lastRun.mag:lastRun.hz):'')+'.png';document.body.appendChild(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(a.href),3000)});
 }
 const EMPTY={type:'FeatureCollection',features:[]};
@@ -539,7 +644,7 @@ $('shrink').onchange=()=>{if(map&&map.getLayer('bld3d')){map.setPaintProperty('b
 function dataNotes(s){
   const n=[];
   if(s.hazard_note)n.push('<b>'+esc(s.hazard_note)+'</b>');
-  if(s.casualties)n.push(`<b>Casualty rates are unverified placeholders.</b> Independent USGS PAGER estimate of deaths: about ${s.casualties.pager_deaths.toLocaleString()}${s.casualties.pager_disagreement?' (<b>our figure differs a lot from it</b>)':''}.`);
+  if(s.casualties)n.push(`<b>Casualty rates are Hazus values for US building types, mapped to Indian types by judgement.</b> Independent USGS PAGER estimate of deaths: about ${s.casualties.pager_deaths.toLocaleString()}${s.casualties.pager_disagreement?' (<b>our figure differs a lot from it</b>)':''}.`);
   if(s.storeys_measured_share!=null)n.push(`Storeys known for ${pct(s.storeys_measured_share)} of buildings (${esc(s.height_source||'')}); the rest are estimated.`);
   if(s.gm_models&&s.gm_models.length)n.push(`Shaking: ${esc(s.gm_models.join(' + '))} (${s.gm_region==='himalaya'?'Himalayan region':'worldwide crustal'}); distance by ${esc(s.distance_method||'')}${s.mechanism&&s.mechanism!=='unspec'?', '+({ss:'strike-slip',rs:'reverse',ns:'normal'}[s.mechanism]):''}.`);
   if(s.beyond_validity)n.push('<b>The epicentre is farther than these models are meant for (over 400 km); treat the result as rough.</b>');
@@ -577,7 +682,7 @@ function addTileLayers(){
   map.addSource('bldv',{type:'vector',tiles:[location.origin+tileInfo.url],minzoom:tileInfo.minzoom,maxzoom:tileInfo.maxzoom});
   const L=tileInfo.layer;
   map.addLayer({id:'bldv-2d',type:'fill',source:'bldv','source-layer':L,minzoom:15,layout:{visibility:'none'},paint:{'fill-color':COL[3],'fill-opacity':.85}});
-  map.addLayer({id:'bldv-line',type:'line',source:'bldv','source-layer':L,minzoom:15,layout:{visibility:'none'},paint:{'line-color':'#1c2630','line-width':.5,'line-opacity':.5}});
+  map.addLayer({id:'bldv-line',type:'line',source:'bldv','source-layer':L,minzoom:15,layout:{visibility:'none'},paint:{'line-color':mapInk(),'line-width':.5,'line-opacity':.5}});
   map.addLayer({id:'bldv-3d',type:'fill-extrusion',source:'bldv','source-layer':L,minzoom:13.5,layout:{visibility:'none'},paint:{'fill-extrusion-color':COL[3],'fill-extrusion-height':3,'fill-extrusion-base':0,'fill-extrusion-opacity':.92}});
 }
 function removeTileLayers(){['bldv-3d','bldv-line','bldv-2d'].forEach(i=>{if(map.getLayer(i))map.removeLayer(i)});if(map.getSource('bldv'))map.removeSource('bldv')}
@@ -635,4 +740,15 @@ async function loadBld(){
   }catch(err){if(err.name!=='AbortError')console.warn('Loading buildings failed:',err)}
   if(ctl===my)ctl=null;
 }
+// scenario section: a one-line readout when folded; the form folds away after a run so the results come first
+function scnSummary(){
+  const t=$('tod').value;
+  if(hazard==='cyclone')return `Cyclone, ${$('cHead').value}\u00b0, ${t}`;
+  if(hazard==='flood')return `Flood, x${$('flScale').value}, ${t}`;
+  return `M${$('mag').value}, ${$('depth').value} km, ${t}`;
+}
+function scnUpdate(){$('scnSum').textContent=scnSummary()}
+function scnFold(){scnUpdate();$('scn').open=false}
+['mag','depth','tod','hz','cHead','flScale'].forEach(i=>{$(i).addEventListener('input',scnUpdate);$(i).addEventListener('change',scnUpdate)});
+scnUpdate();
 </script></body></html>

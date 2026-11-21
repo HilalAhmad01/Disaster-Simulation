@@ -3,15 +3,15 @@
 Everything comes from a plain dict built by build_context(), so the same content feeds both formats and tests can check it.
 The methods-and-caveats section lists every placeholder or unverified input by name; it is part of the report, not an extra.
 """
-import base64, csv, datetime, html, io
+import base64, csv, datetime, html, io, pathlib
 from places import reverse_name
 
 TOD = {"night": "night", "day": "daytime", "commute": "evening commute"}
 CAVEATS = [
     ("Fragility curves", "UNCALIBRATED placeholders (not fitted to survey data, not from HAZUS or GEM). Absolute damage numbers carry this."),
-    ("Casualty rates", "UNVERIFIED placeholders in the Hazus structure; compare with the PAGER figure shown. Outdoor casualties are not modelled."),
-    ("Debris blocking streets", "Placeholder constants, not calibrated; low-rise blockage is probably under-estimated."),
-    ("Construction types", "Probabilities from a documented rule with an ASSUMED census prior, not measured."),
+    ("Casualty rates", "Hazus 6.1 indoor rates for US building types, mapped by judgement to Indian types; compare with the PAGER figure shown. Outdoor casualties are not modelled."),
+    ("Debris blocking streets", "Rule from Anelli et al. (2020): a street is blocked when debris leaves under 3.5 m free; debris spread by building type. Direction weights are assumed; debris from both sides is not added up (under-states blockage on narrow streets); validated against no observed blockage data."),
+    ("Construction types", "Probabilities from a documented rule applied to Census 2011 urban wall and roof shares (concrete lumped with metal sheets), not measured per building."),
     ("Storeys", "Measured from satellite heights where the height product is usable; the rest are estimates (see the data note)."),
     ("People", "Typical-occupancy capacity scaled to GHS-POP (modelled 2025 estimate) by 1 km cells; day/night shares are approximate."),
     ("Shaking", "Weighted mix of BA08/BSSA14 (and Sharma 2009 in the Himalayan region); a rectangular Wells & Coppersmith rupture is shorter than very large real ruptures."),
@@ -49,7 +49,7 @@ def render_html(ctx):
     rows += [(k, str(v)) for k, v in s.get("peak", [["Peak shaking (g)", s.get("max_pga")], ["Peak intensity (MMI)", s.get("max_mmi")]])]
     c = s.get("casualties")
     if c:
-        rows += [("Estimated deaths (unverified rates)", _n(c["deaths"])), ("Estimated injured (all severities)", _n(c["injury_1"] + c["injury_2"] + c["injury_3"])),
+        rows += [("Estimated deaths (Hazus rates, US stock)", _n(c["deaths"])), ("Estimated injured (all severities)", _n(c["injury_1"] + c["injury_2"] + c["injury_3"])),
                  ("USGS PAGER estimate of deaths (cross-check)", _n(c["pager_deaths"]) + (" - our figure differs a lot" if c["pager_disagreement"] else ""))]
     if mc:
         t = mc["totals"]
@@ -58,15 +58,15 @@ def render_html(ctx):
             rows += [("Deaths, range", _range(t["deaths"])), ("Injured, range", _range(t["injuries"]))]
     srows = "".join(f"<tr><td>{e(k)}</td><td>{e(v)}</td></tr>" for k, v in rows)
     worst = {w["rank"]: w for w in ctx["worst"]}
-    prows = "".join(f"<tr><td>{p['rank']}</td><td>{e(p['name'] or '(unnamed)')}</td><td>{_n(p['risk'])}</td><td>{_n(p['heavy'])}</td><td>{_n(p['severe'])}</td><td>{p['dist_km']}</td></tr>" for p in ctx["cells"])
+    prows = "".join(f"<tr><td>{p['rank']}</td><td>{e(p['name'] or '(unnamed)')}</td><td>{_n(p['risk'])}</td><td>{_n(p['heavy'])}</td><td>{_n(p['severe'])}</td><td>{'-' if p.get('dist_km') is None else p['dist_km']}</td></tr>" for p in ctx["cells"])
     wrows = "".join(f"<tr><td>{w['rank']}</td><td>{w['lat']:.4f}, {w['lon']:.4f}</td><td>{_n(w['risk_p90'])}</td><td>{_n(w['risk_p50'])}</td></tr>" for w in ctx["worst"])
     acc = ctx["access"]
     arow = ""
     if acc:
         arow = (f"<h2>Hospital access</h2><p>{acc['share_within_30min']:.0%} of people are within 30 minutes of a working hospital; {acc['share_no_access']:.0%} have no route to one. "
                 f"Typical travel time {acc['median_minutes']} min. {acc['hospitals_may_not_work']} of {acc['hospitals']} hospitals may not be working; "
-                f"{acc['streets_likely_blocked']:,} of {acc['streets']:,} street segments are likely blocked by debris (constants not calibrated).</p>")
-    drows = "".join(f"<tr><td>{d['order']}</td><td>{e(d['team'])} ({e(d['facility'])})</td><td>area {d['cell_rank']} ({_n(d['people_at_risk'])} at risk)</td><td>{d['travel_min']}</td><td>{d['p_route_open']:.0%}</td></tr>" for d in ctx["dispatch"])
+                f"{acc['streets_likely_blocked']:,} of {acc['streets']:,} street segments are likely blocked by debris (rule from Anelli et al. 2020, not validated against observed blockages).</p>")
+    drows = "".join(f"<tr><td>{d['order']}</td><td>{e(d['team'])} ({e(d['facility'])})</td><td>area {d['cell_rank']} ({_n(d['people_at_risk'])} at risk)</td><td>{d['travel_min']}</td><td>{'-' if d['p_route_open'] is None else format(d['p_route_open'], '.0%')}</td></tr>" for d in ctx["dispatch"])
     img = f'<img class="map" src="data:image/png;base64,{base64.b64encode(ctx["image"]).decode()}">' if ctx["image"] else ""
     dn = ctx["data_notes"]
     notes = f"<li>Storeys known for {dn['storeys_measured_share']:.0%} of buildings ({e(str(dn['height_source']))}); the rest are estimated.</li>" if dn.get("storeys_measured_share") is not None else ""
@@ -79,21 +79,25 @@ def render_html(ctx):
         scenario_html = (f"<p><b>Magnitude {sc['mag']}</b>, depth {sc['depth_km']} km, epicentre {sc['lat']:.4f}, {sc['lon']:.4f}{strike}; time of day: {TOD.get(sc['time_of_day'], '')}. "
                          f"Shaking model: {e(' + '.join(s.get('gm_models') or []))} ({e(str(s.get('distance_method', '')))}).</p>")
     else:
-        extra = ", ".join(f"{e(str(k))} {e(str(v))}" for k, v in sc.items() if k not in ("hazard", "time_of_day", "lat", "lon") and v is not None)
-        scenario_html = f"<p><b>{e(hz.title())} scenario</b> at {sc.get('lat', 0):.4f}, {sc.get('lon', 0):.4f}; {e(extra)}; time of day: {TOD.get(sc['time_of_day'], '')}. {e(str(s.get('hazard_note', '')))}</p>"
-    return f"""<!doctype html><html><head><meta charset="utf-8"><title>Earthquake scenario report</title><style>
+        shown = {k: (pathlib.Path(str(v)).stem if k == "raster" else v) for k, v in sc.items()}     # raster: its name, not the server path
+        extra = ", ".join(f"{k} {v}" for k, v in shown.items() if k not in ("hazard", "time_of_day", "lat", "lon") and v is not None)
+        where = f" at {sc['lat']:.4f}, {sc['lon']:.4f}" if sc.get("lat") is not None and sc.get("lon") is not None else ""
+        scenario_html = f"<p><b>{e(hz.title())} scenario</b>{where}; {e(extra)}; time of day: {TOD.get(sc['time_of_day'], '')}. {e(str(s.get('hazard_note', '')))}</p>"
+    hzt = {"earthquake": "Earthquake", "cyclone": "Cyclone", "flood": "Flood"}.get(hz, str(hz).title())
+    origin = {"earthquake": "km from epicentre", "cyclone": "km from track point"}.get(hz, "km")
+    return f"""<!doctype html><html><head><meta charset="utf-8"><title>{e(hzt)} scenario report</title><style>
 @page {{ size: A4; margin: 16mm 14mm; @bottom-center {{ content: "Planning estimate, not confirmed damage - page " counter(page); font: 8pt sans-serif; color:#5b6874 }} }}
 body {{ font: 10pt/1.4 sans-serif; color:#1c2630 }} h1 {{ font-size: 18pt; margin: 0 0 2pt }} h2 {{ font-size: 12pt; margin: 14pt 0 4pt; border-bottom: 1px solid #cfd6db }}
 table {{ border-collapse: collapse; width: 100% }} td, th {{ border-bottom: 1px solid #e3e8eb; padding: 3pt 4pt; text-align: left; vertical-align: top }} th {{ background:#f2f4f5 }}
 .map {{ width: 100%; max-height: 100mm; object-fit: contain; margin: 6pt 0 }} .small {{ font-size: 8.5pt; color:#41505d }} .warn {{ background:#fdf3d6; border:1px solid #f2b705; padding:5pt 7pt; margin:6pt 0 }}
 </style></head><body>
-<h1>Earthquake damage scenario</h1>
+<h1>{e(hzt)} damage scenario</h1>
 <p class="small">{e(str(ctx['area'].get('name', '')))} &middot; generated {ctx['generated']} &middot; simulation {ctx['run']}</p>
 {scenario_html}
-<div class="warn"><b>Read the caveats on the last page.</b> Fragility curves and casualty rates in this version are uncalibrated or unverified placeholders; use the numbers to compare areas, not as predictions.</div>
+<div class="warn"><b>Read the caveats on the last page.</b> Fragility curves in this version are uncalibrated placeholders and casualty rates are Hazus values for US building types; use the numbers to compare areas, not as predictions.</div>
 {img}
 <h2>Summary</h2><table>{srows}</table>
-<h2>Priority neighbourhoods</h2><table><tr><th>#</th><th>Place</th><th>People at risk</th><th>Moderate or worse</th><th>Severe</th><th>km from epicentre</th></tr>{prows}</table>
+<h2>Priority neighbourhoods</h2><table><tr><th>#</th><th>Place</th><th>People at risk</th><th>Moderate or worse</th><th>Severe</th><th>{origin}</th></tr>{prows}</table>
 {('<h2>Worst case (90th percentile) priorities</h2><table><tr><th>#</th><th>Location</th><th>People at risk, bad case</th><th>Median</th></tr>' + wrows + '</table>') if wrows else ''}
 {arow}
 {('<h2>Suggested dispatch order</h2><table><tr><th>#</th><th>Team</th><th>Go to</th><th>Min</th><th>Route open</th></tr>' + drows + '</table><p class="small">Teams go where they reach the most people at risk per minute. A planning suggestion, not an operational order.</p>') if drows else ''}

@@ -85,7 +85,11 @@ def summarize(mle, boot):
     vals = list(mle["theta"]) + [mle["beta"]]
     d = {n: {"mle": float(v), "ci90": [float(a), float(b)]} for n, v, a, b in zip(names, vals, lo, hi)}
     d["ci_width_over_theta_extensive"] = float((hi[2] - lo[2]) / mle["theta"][2])
-    d["narrow_ci"] = bool(d["ci_width_over_theta_extensive"] < 0.5)          # rule: CI width < 50% of theta_3
+    th = np.asarray(mle["theta"], float)
+    # a fit that ran off to a boundary (RC_LOW on the real Nepal data: beta ~ 1e3, medians 0 or infinity; RC_MID: beta = 0) has a
+    # meaningless interval: it must never count as "narrow" or be applied
+    d["degenerate"] = bool(not (np.isfinite(th).all() and (th > 0.01).all() and (th < 10).all() and 0.2 <= mle["beta"] <= 1.5 and mle.get("success", True)))
+    d["narrow_ci"] = bool(d["ci_width_over_theta_extensive"] < 0.5 and not d["degenerate"])          # rule: CI width < 50% of theta_3
     d["bootstrap_samples"] = boot.round(5).tolist()
     return d
 
@@ -186,12 +190,16 @@ def classify_nepal(df, cols=None):
     cls[rc & (fl >= 5)] = "RC_MID"
     return cls
 
-def to_groups(df, ward_col, grade_col, wards_pga, cls_col="cls", grade_map=None):
+def to_groups(df, ward_col, grade_col, wards_pga, cls_col="cls", grade_map=None, undamaged=None):
     """Rows (one per building) -> per (class, ward) counts (G, 5) with the ward's mean/spread of ln PGA. Wards without a PGA
-    are dropped. Returns DataFrame with columns cls, ward, x, s, n0..n4."""
+    are dropped. undamaged: optional boolean Series (aligned with df) marking buildings recorded as not damaged; they are
+    counted in state 0 (needed for an untruncated fit; in the Nepal table they carry grade 1, like slightly damaged ones).
+    Returns DataFrame with columns cls, ward, x, s, n0..n4."""
     gm = grade_map or GRADE_TO_STATE
     d = df[[cls_col, ward_col, grade_col]].dropna().copy()
     d["state"] = d[grade_col].astype(int).map(gm)
+    if undamaged is not None:
+        d.loc[undamaged.reindex(d.index).fillna(False).astype(bool), "state"] = 0
     d = d.dropna(subset=["state"])
     t = d.groupby([cls_col, ward_col, "state"]).size().unstack("state", fill_value=0).reindex(columns=range(5), fill_value=0)
     t.columns = [f"n{k}" for k in range(5)]
@@ -242,28 +250,36 @@ def choose_final(fits, current):
                            f"{r['ci_width_over_theta_extensive']:.0%} of the median" + ("; conditional on damage (truncated)" if r["truncated"] else ""))
             new["samples"][cls] = r["bootstrap_samples"]
             any_fit = True
+        elif r.get("degenerate"):
+            status[cls] = "kept previous values: the fit is degenerate (parameters ran to a boundary), i.e. the data do not identify the curve"
+        elif r.get("rejected"):
+            status[cls] = "kept previous values: " + r["rejected"]
         else:
             status[cls] = f"kept previous values: fit too uncertain (CI width {r['ci_width_over_theta_extensive']:.0%} of the median, rule < 50%)"
     if any_fit:
         new["status"] = "PARTLY CALIBRATED: see class_status"
     return new
 
-def holdout_score(fit_res, test_groups, train_groups):
+def holdout_score(fit_res, test_groups, train_groups, truncated=True):
     """Score held-out groups (columns x, s, n0..n4) against a fitted class: mean log-loss per building of the observed damage
-    grades, versus a null model that predicts the training groups' overall grade mix everywhere; plus Brier score of
-    P(DS >= extensive | damaged). Lower is better; skill = 1 - logloss/logloss_null."""
+    states, versus a null model that predicts the training groups' overall state mix everywhere; plus Brier score of
+    P(DS >= extensive) (given damage when truncated). Lower is better; skill = 1 - logloss/logloss_null. With
+    truncated=False state 0 (undamaged) is scored as well."""
+    lo = 1 if truncated else 0
+    cols = [f"n{k}" for k in range(lo, 5)]
     x, s = test_groups.x.to_numpy(), test_groups.s.to_numpy()
-    n = test_groups[[f"n{k}" for k in range(1, 5)]].to_numpy().astype(float)
-    P = state_probs(x, np.log(fit_res["theta"]), fit_res["beta"], s)[:, 1:]
+    n = test_groups[cols].to_numpy().astype(float)
+    P = state_probs(x, np.log(fit_res["theta"]), fit_res["beta"], s)[:, lo:]
     P = P / P.sum(1, keepdims=True)
-    mix = train_groups[[f"n{k}" for k in range(1, 5)]].to_numpy().sum(0).astype(float)
+    mix = train_groups[cols].to_numpy().sum(0).astype(float)
     mix = mix / mix.sum()
     ll = -(n * np.log(np.clip(P, 1e-12, None))).sum() / n.sum()
     ll0 = -(n * np.log(np.clip(mix, 1e-12, None))[None, :]).sum() / n.sum()
-    pred_ext = P[:, 2:].sum(1)
-    obs_ext = n[:, 2:].sum(1) / n.sum(1)
+    j = 2 if truncated else 3                                   # first column of 'extensive' within the scored columns
+    pred_ext = P[:, j:].sum(1)
+    obs_ext = n[:, j:].sum(1) / n.sum(1)
     brier_ = float(np.average((pred_ext - obs_ext) ** 2, weights=n.sum(1)))
-    brier0 = float(np.average((mix[2:].sum() - obs_ext) ** 2, weights=n.sum(1)))
+    brier0 = float(np.average((mix[j:].sum() - obs_ext) ** 2, weights=n.sum(1)))
     return {"log_loss": float(ll), "log_loss_null": float(ll0), "skill": float(1 - ll / ll0), "brier": brier_, "brier_null": brier0,
             "n_buildings": int(n.sum())}
 

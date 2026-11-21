@@ -516,7 +516,7 @@ In priority order: 0.1–0.3, then 1.1 (Google heights), 1.3 (population), 2.1 (
 
 ## 13. Progress checklist
 
-Status on 2026-11-21. `[x]` done and tested; `[~]` built and tested but a stated part is missing or a target was missed (see note); `[ ]` not done.
+Status on 2026-11-21 (updated after the real-data pass). `[x]` done and tested; `[~]` built and tested but a stated part is missing or a target was missed (see note); `[ ]` not done.
 Details: `quake-map/disaster/CHANGELOG.md`, `docs/validation.md`, `docs/calibration/README.md`.
 
 Phase 0
@@ -525,28 +525,28 @@ Phase 0
 - [x] 0.3 baseline harness + synthetic regression test
 - [x] 0.4 area registry + clip rule + release check
 - [x] 0.5 background jobs + progress UI
-- [x] 0.6 region pre-download (`tools/prefetch_region.py`; not run on a large region)
+- [x] 0.6 region pre-download (`tools/prefetch_region.py`; run on central Delhi, 0.35 x 0.30 deg: 1,214,387 buildings, 22.8 million people scaled to GHS-POP, storeys from Google heights (`--method overview`; the default `nearest` would take hours at this size), under a memory cap; now also fetches heights and population, which it silently skipped before. The plan's 1 x 0.8 deg example was not run: about 14x Noida's memory)
 
 Phase 1
 - [~] 1.1 Google 2.5D heights -> storeys, `levels_src`. **Target missed:** 66.9% measured in Noida (> 80% wanted; 81.8% in the baseline box). Cause: 30% of footprints read < 2 m
-- [~] 1.2 construction-type probabilities + mixed damage curves + per-type beta. **Census shares are an assumed default, not looked up**
-- [~] 1.3 GHS-POP matching + day/night occupancy + time-of-day input. Night total within 2.2% of GHS-POP. **Time-of-day shares unverified against Hazus**
-- [~] 1.4 exposure checks + storey-height calibration (2.8 m). **+/-1 storey agreement 68.8% (target 70% missed)**; no imagery spot-check
+- [x] 1.2 construction-type probabilities + mixed damage curves + per-type beta. Census 2011 urban wall and roof shares are now real (India, Delhi, Uttar Pradesh rows, from the MoHUA/NBO compendium); caveat: concrete roofs are lumped with metal sheets, so the roof share is an upper bound. Areas built earlier keep the old prior until rebuilt
+- [~] 1.3 GHS-POP matching + day/night occupancy + time-of-day input. Night total within 2.2% of GHS-POP. **Time-of-day shares follow Hazus Table 12-2 where it has a value (commercial, industrial, education, hotels); residential day/evening, retail, medical, religious are judgements**
+- [~] 1.4 exposure checks + storey-height calibration (2.8 m). **+/-1 storey agreement 68.8% (target 70% missed)**; imagery spot-check: tool and a 50-building sheet are built (`tools/spotcheck_storeys.py`), **the looking has to be done by a person**
 - [~] 1.5 ML attributes: **built and shipped as a satellite-supervised storey model** (a label-trained model passed the plan's test but was biased); extrapolates below the training height range, no construction-material labels, no road features. docs/ml_attributes.md
 
 Phase 2
 - [x] 2.1 BA08 matches OpenQuake (machine precision) + standard deviations stored. (Found and fixed a v1 normal/reverse offset swap)
 - [x] 2.2 finite-fault Rjb (known strike) + ps2ff (unknown strike) + UI
-- [~] 2.3 ported regional models (BSSA14, Sharma 2009; each < 1% of OpenQuake) + weighted mix by distance band. **Weights from one paper's IGP/Himalaya scores; Sharma's 0.2 is a judgement; Anbazhagan & Bajaj 2023 not read; the 2015 Gorkha MMI-in-Delhi comparison was not done**
+- [~] 2.3 ported regional models (BSSA14, Sharma 2009; each < 1% of OpenQuake) + weighted mix by distance band. **Weights from one paper's IGP/Himalaya scores; Sharma's 0.2 is a judgement; Anbazhagan & Bajaj 2023 is paywalled and not read.** Gorkha-in-Delhi check done (docs/validation_gorkha_delhi.md): **the mix under-predicts at ~700 km by about 3 intensity units** (MMI 1.0 versus DYFI 4.0; beyond 400 km the mix is BSSA14 alone); damage results unaffected (PGA that small harms nothing), far-field PGA/MMI maps unreliable
 - [x] 2.4 Vs30 override layer
 
 Phase 3
-- [~] 3.1 downloads via scripts: ShakeMaps and EMS grading work; **Nepal survey and boundaries are manual/unavailable**
-- [~] 3.2 ward PGA (population-weighted) + sigma: code + tests, not run on real wards
+- [x] 3.1 downloads via scripts: ShakeMaps, EMS grading and (new) the Nepal building table (an open mirror of the derived table, not the official file), HRRP ward polygons, GEM files, Gorkha DYFI. The official survey still needs registration (NSO catalog 69)
+- [~] 3.2 ward PGA + sigma: run on 900 real wards (94.9% of buildings); **ward means are not population-weighted** (no Nepal GHS-POP fetched)
 - [x] 3.3 class and damage-state mapping documented (column names to verify against the real data dictionary)
-- [~] 3.4 maximum-likelihood fit with grouping, shaking-uncertainty handling, bootstrap CIs, plots: built and recovers known curves; **not run on real data**
-- [ ] 3.5 GEM/HAZUS comparison + final FRAG/BETA with provenance: **not done** (no data; curves stay UNCALIBRATED placeholders; the decision rule and the loader are built)
-- [~] 3.6 validation: Turkiye 2023 and Kathmandu replayed with real data (**weak/inconclusive**); held-out: the household survey is unobtainable, so a leave-one-town-out test on EMS gradings of 6 Nepalese towns was run instead (**no transferable skill**)
+- [x] 3.4 maximum-likelihood fit run on the real survey (untruncated, undamaged buildings counted as state 0; the earlier assumption that the survey lists damaged houses only was wrong). **Result: URM fit has held-out skill 0.03, RC_LOW and RC_MID degenerate; nothing applied** (docs/calibration/README.md)
+- [~] 3.5 GEM comparison done (docs/calibration/gem_comparison.md): our placeholders are far more fragile than GEM below 0.5 g. **No Hazus comparison** (Hazus structural fragility is in spectral displacement; no PGA table). No curve adopted: curves stay UNCALIBRATED placeholders, with the reasons recorded
+- [~] 3.6 validation: Turkiye 2023 and Kathmandu replays (weak/inconclusive); 3.6.1 held-out districts now run on the real survey (districts 22, 29, 36 left out: URM skill 0.03, RC_LOW -5.98, RC_MID 0.03); the earlier leave-one-town-out EMS test is kept as a second check
 
 Phase 4
 - [x] uncertainty.py Monte Carlo (between-event, correlated within-event, models, fragility, type, occupancy). Fragility and occupancy spreads are assumptions
@@ -555,9 +555,9 @@ Phase 4
 Phase 5
 - [x] 5.1 facilities + facility damage
 - [x] 5.2 road graph + widths (speeds and widths are assumed tables)
-- [~] 5.3 debris blockage model documented + vectorised. **Constants are placeholders, not calibrated against the cited papers**
+- [~] 5.3 debris blockage: rule and 3.5 m free-width criterion now from Anelli et al. (2020) (equations 2-11), by building type. **Direction weights (1/3 each) assumed; debris from the two sides is not added up (under-states narrow streets); not validated against observed blockages;** Yu & Gardoni 2022 not read (paywalled), the Tokyo model's constants are in inaccessible Japanese sources
 - [x] 5.4 access map, routes, dispatch order
-- [~] 5.5 casualties + PAGER sanity check. **Rates and PAGER parameters are unverified (Hazus manual unreachable)**
+- [x] 5.5 casualties: Hazus 6.1 indoor rates per type (tables 12-3 to 12-8) and PAGER India parameters (theta 11.53, beta 0.14, checked against OFR 2009-1136; the earlier 14.05/0.185 were Indonesia's) now verified. US stock mapped by judgement to URML/C3L/C3M; outdoor casualties not modelled
 
 Phase 6
 - [x] 6.1 vector tiles with pixel-diff check (tippecanoe built from source; <= 1.7% pixel difference after edge tolerance; docs/tiles.md)
@@ -568,7 +568,7 @@ Phase 6
 
 Phase 7
 - [x] 7.1 hazard interface (earthquake refactor, exact baseline match)
-- [~] 7.2 flood module (end to end on a test raster; **depth-damage curve is an unverified placeholder; no JRC map bundled**)
+- [x] 7.2 flood module end to end on a real JRC 100-year map (`tools/get_jrc_flood.py`); depth-damage curve is the JRC Huizinga 2017 Asia residential curve. **Caveat: the map floods 55% of Noida's buildings, almost certainly too many; absolute flood totals are not credible**
 - [~] 7.3 cyclone module (**wind fragility is a placeholder**)
 
 Phase 8

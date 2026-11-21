@@ -55,14 +55,14 @@ Colour classes: blue = little or none, green = light, yellow = moderate, red = s
 | BA08, BSSA14 and Sharma 2009 equations | **Checked against OpenQuake** (BA08 to machine precision, others < 1%): docs/gmpe_verification.md. v1.0 had BA08's normal/reverse offsets swapped (not used by the app); fixed |
 | Distance, rupture | Wells & Coppersmith 1994 rectangle (shorter than the biggest real ruptures); ps2ff table from USGS (public domain). Depth acts through Ztor: the distance given to the ground-motion model is sqrt(Rjb² + Ztor²) |
 | Model weights | BA08 0.65 / BSSA14 0.35 from Selvan & Sinha (2024) log-likelihood scores; **Sharma 2009's 0.2 near the source is a judgement** |
-| Soil | USGS Vs30 mosaic if you install it (`tools/get_vs30.py`); otherwise a flat 250 m/s, stated in the summary |
+| Soil | USGS global Vs30 map (`tools/get_vs30.py` downloads and installs it; 30 arcsec, -56 to 84 deg latitude); without it a flat 250 m/s, stated in the summary |
 | Storeys | Measured for **67% of Noida** (82% in the 6 x 5 km baseline box). The 30% of footprints the height product cannot resolve (< 2 m: small, low buildings) now get a **satellite-supervised model** (unbiased on usable-height buildings, beats the old area rule in 8/9 held-out cities; docs/ml_attributes.md) - an extrapolation, not independently verified for those buildings, and reported as `modelled`, not measured. Agreement with labelled buildings: 69% within one storey (target 70% missed), bias -0.45 storeys at 2.8 m/storey |
-| Construction types | Probabilities from a documented rule; the **census shares are an assumption**, not looked up |
-| People | Scaled to GHS-POP (a modelled estimate; Noida night total within 2.2% of it; v1 gave ~1.9x). Time-of-day shares are approximate and **unverified** against Hazus |
-| **Fragility curves** | **UNCALIBRATED v1 placeholders.** The calibration code is built and tested on synthetic data, but the Nepal survey could not be obtained, so no curve was fitted (docs/calibration/README.md) |
-| **Casualty rates** | **UNVERIFIED** placeholders in the Hazus structure; PAGER India parameters recalled from memory, also unverified |
-| Debris-blocking constants, road speeds, street widths | Assumptions (docs/roads.md) |
-| Flood damage curve, wind fragility | Placeholders |
+| Construction types | Probabilities from a documented rule applied to **Census 2011 urban wall and roof shares** (India, Delhi, Uttar Pradesh rows; read from the MoHUA/NBO compendium). Census 'concrete roof' is lumped with metal sheets, so the roof share is an upper bound. Areas built earlier keep the prior they were built with until rebuilt |
+| People | Scaled to GHS-POP (a modelled estimate; Noida night total within 2.2% of it; v1 gave ~1.9x). Time-of-day shares now follow Hazus 6.1 Table 12-2 where it gives a value (commercial, industrial, education, hotels); residential day/evening, retail day, medical and religious shares remain judgements |
+| **Fragility curves** | **UNCALIBRATED v1 placeholders.** The fit was run on the real Nepal 2015 building table (762k buildings) and rejected: URM has no held-out skill, RC fits are degenerate. Compared with GEM: ours are far more fragile below 0.5 g (docs/calibration/README.md) |
+| **Casualty rates** | **Hazus 6.1 values** per building type (tables 12-3 to 12-8, read from the manual) for US stock, mapped by judgement to Indian types (URML, C3L, C3M); outdoor casualties not modelled. PAGER India parameters (theta 11.53, beta 0.14) checked against USGS OFR 2009-1136 (an earlier draft had Indonesia's values) |
+| Debris blocking | Rule and 3.5 m free-width criterion from Anelli et al. (2020); direction weights assumed, no observed blockages to validate against (docs/roads.md). Road speeds and street widths are assumptions |
+| Flood damage curve | JRC Huizinga et al. (2017) Asia residential curve (a JRC return-period map is fetched with `tools/get_jrc_flood.py`). **Treat absolute flood totals with great caution**: the JRC 100-year map puts 55% of Noida's buildings in flooded cells (it floods whole river plains on a 90 m model with no defences). Wind fragility is still a placeholder |
 | Monte Carlo spreads | Ground-motion spread from the models; **fragility (±25%) and population (±20%) spreads are assumptions** |
 | Validation | Replays of Türkiye 2023 and Nepal 2015: weak or inconclusive (docs/validation.md) |
 
@@ -136,9 +136,12 @@ A fresh clone starts with no data and says so. Click **Load a new area**, drag a
 |---|---|---|
 | Measured storeys | `python tools/get_google_heights.py --area <id> [--method overview]` | public Google bucket, no account; `nearest` (default) is most faithful but ~100 s per year per 30 km², `overview` ~16x faster, measured difference in docs/validation.md |
 | Population | `python tools/get_ghs_pop.py --area <id>` | JRC GHSL bucket, no account |
-| Soil | `python tools/get_vs30.py /path/to/vs30_mosaic_median_30c.tif` | USGS ScienceBase blocks scripted downloads: download in a browser from https://doi.org/10.5066/P1NV6UNM |
+| Soil | `python tools/get_vs30.py` | downloads the 610 MB USGS grid with curl and converts it to a compressed GeoTIFF (~30 s); a GeoTIFF you already have can be passed as an argument. ScienceBase (the newer mosaic) blocks scripts; this host does not |
+| Flood map | `python tools/get_jrc_flood.py --bbox w,s,e,n --rp 100 --name delhi` | JRC/Copernicus global river flood maps (3 arc-second tiles, ~45 MB); appears in the flood scenario list. Not an official hazard map |
 | Vector tiles (3D/2D speed) | `sh tools/install_tippecanoe.sh` | builds tippecanoe into `.tools/` (needs g++, make, zlib, sqlite headers; no root); tiles are then cut automatically per area, otherwise GeoJSON is used |
-| Region pre-download | `python tools/prefetch_region.py --bbox w,s,e,n --name delhi-ncr` | later boxes inside it are cut with no network |
+| Region pre-download | `python tools/prefetch_region.py --bbox w,s,e,n --name delhi-ncr` | footprints, then heights and population, then the exposure; later boxes inside it are cut with no network. Run on central Delhi (0.35 x 0.30 deg): 1.2 million buildings, about 2.5 GB peak memory; the plan's 1 x 0.8 deg example would need about 14x Noida's memory |
+| Nepal calibration data | `python tools/get_nepal_calibration.py`, then `tools/prepare_nepal_survey.py` | building table (open mirror), HRRP ward polygons, ShakeMap, GEM files |
+| Storey spot-check | `python tools/spotcheck_storeys.py make --area noida` | writes a sheet of 50 buildings for you to check by eye; `score` computes agreement. Needs a person |
 
 Area ids are in the saved-area list (`GET /api/areas`). After adding a raster the area's exposure rebuilds automatically on next load (about 70 s for 483k buildings).
 
@@ -163,7 +166,7 @@ python tools/baseline.py --check            # real-data baselines (needs the dow
 
 Needed from the internet: loading areas (Overture), neighbourhood names (Nominatim), facilities (Overpass) and roads (OSM) the first time, map tiles, the map library CDN. Download on a good connection and copy into `data/`; use resumable downloads (`curl -L -C -`); bounding boxes are **west,south,east,north**. Keep `data/` out of git. Fully offline use is not supported.
 
-Not scriptable and needing manual steps: the USGS Vs30 mosaic (ScienceBase bot challenge), the Nepal 2015 survey (registration; see `tools/get_nepal_calibration.py`), the Hazus 6.1 manual and GEM vulnerability tables (needed to verify casualty rates and to compare fragility curves).
+Not scriptable and needing a person: the official Nepal 2015 survey (registration at microdata.nsonepal.gov.np/index.php/catalog/69; those hosts also do not answer from some networks), the Anbazhagan & Bajaj (2023) chapter (paywalled), and the 50-building storey spot-check (`tools/spotcheck_storeys.py`). The Hazus manual is read from the Internet Archive (FEMA refuses scripted downloads); the JRC depth-damage workbook and the census compendium likewise.
 
 ---
 
@@ -172,15 +175,15 @@ Not scriptable and needing manual steps: the USGS Vs30 mosaic (ScienceBase bot c
 | Where | What |
 |---|---|
 | `priors/fragility.json` (or `data/priors/fragility.json`) | Fragility medians and dispersion per construction type; carries its own status text. **Placeholders** until calibrated |
-| `priors/casualty_rates.csv`, `casualty_params.json` | Hazus-style casualty rates, collapse fractions, PAGER parameters (**unverified**) |
+| `priors/casualty_rates.csv`, `casualty_params.json` | Hazus 6.1 casualty rates per type, collapse fractions, PAGER parameters (verified against the sources) |
 | `priors/census_materials.csv` → `tools/build_construction_priors.py` | Census wall/roof shares behind the type probabilities |
 | `priors/occupancy.csv` | Night/day/commute shares by use |
-| `priors/street_width.csv`, `road_speeds.csv`, `flood_damage.csv`, `wind_fragility.json` | Assumed road and hazard tables |
+| `priors/street_width.csv`, `road_speeds.csv`, `wind_fragility.json` | Assumed road and wind tables (the flood curve `flood_damage.csv` is the JRC one) |
 | `gmm.py` `LOGIC` | Ground-motion model weights by distance (with the evidence in the comments) |
 | `rupture.py` `Z_BOTTOM`, `DEFAULT_DIP` | Seismogenic depth and default dips |
 | `heights.py` `STOREY_M` | Metres per storey (2.8) |
 | `uncertainty.py` `B_KM`, `FRAG_LN_SD`, `OCC_LN_SD` | Correlation range and the assumed spreads |
-| `roads.py` `REACH`, `F_BLOCK`, `G_PARTIAL`, `LAMBDA` | Debris-blocking constants and route penalty (placeholders) |
+| `roads.py` `FREE_MIN_M`, `DIR_W`, `LAMBDA` | Free width for emergency vehicles (Anelli et al. 2020), debris-direction weight (assumed), route penalty |
 | `population.py` `CELL`, `FACTOR_RANGE` | GHS-POP scaling grid and limits |
 | `simulate.py` `buildings_3d(near, far)`, `buildings_in(limit)` | View budgets |
 | `app.py` `MAX_DEG2` | Largest downloadable area (~30 km) |

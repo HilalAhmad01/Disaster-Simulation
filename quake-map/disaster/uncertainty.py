@@ -95,16 +95,20 @@ def run_mc(model, n=200, seed=0, b_km=B_KM, draw_types=True, scales=None, progre
         if sc["frag"] and sc["frag"] != 1.0:
             frag = {t: tuple(np.asarray(sn["frag"][t]) * (np.asarray(frag[t]) / np.asarray(sn["frag"][t])) ** sc["frag"]) for t in frag}
         if draw_types:
+            # one type per building: gather its curve and evaluate all buildings in one pass (same values as damage_probs on a
+            # one-hot W, without per-type masking, which was most of the run time on large areas)
             u = rng.random(N)
             typ = (u[:, None] > cum).sum(1).clip(0, len(S.TYPES) - 1)
-            Wr = np.zeros_like(W); Wr[np.arange(N), typ] = 1.0
+            lth = np.log(np.array([frag[t] for t in S.TYPES], float))
+            bt = np.array([beta[t] for t in S.TYPES], float)
+            p = ndtr((np.log(np.maximum(pga, 1e-9))[:, None] - lth[typ]) / bt[typ][:, None])
         else:
-            Wr = W
-        p = S.damage_probs(pga, Wr, frag, beta)
+            E = S.exceedance(pga, W, frag, beta)                       # fragility curves once, for damage and casualties
+            p = S.mix_exceedance(E, W, N)
         m = np.exp(sc["occ"] * OCC_LN_SD * rng.standard_normal() - 0.5 * (sc["occ"] * OCC_LN_SD) ** 2)    # mean-one multiplier
         risk = occ * m * p[:, 2]
         tot["people_at_risk"][r], tot["expected_collapses"][r], tot["moderate_or_worse"][r] = risk.sum(), p[:, 3].sum(), p[:, 1].sum()
-        ct, _ = K.casualties(pga, Wr, occ * m, frag, beta, S.TYPES, rates, cparams)
+        ct = K.totals_one_type(p, typ, occ * m, S.TYPES, rates, cparams) if draw_types else K.casualties_from(E, W, occ * m, S.TYPES, rates, cparams)[0]
         tot["deaths"][r], tot["injuries"][r] = ct[3], ct[:3].sum()
         cell_risk[r] = np.bincount(cell, weights=risk, minlength=ncell)
         pe_sum += p[:, 2]; pc_sum += p[:, 3]; pe_store[r] = p[:, 2]

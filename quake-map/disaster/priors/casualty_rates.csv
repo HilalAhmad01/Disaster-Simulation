@@ -1,6 +1,16 @@
-damage_state,severity_1,severity_2,severity_3,severity_4,verified,source
-slight,0.0005,0.0,0.0,0.0,NO,"Hazus-style indoor casualty rates as fractions of occupants. UNVERIFIED: written from memory of the Hazus structure (4 severities, 5 damage cases), NOT copied from Hazus 6.1 Earthquake Technical Manual Chapter 12 tables 12-3 to 12-7 (FEMA refuses automated download). Replace with the manual's values."
-moderate,0.0025,0.0003,0.0,0.0,NO,UNVERIFIED (see above)
-extensive,0.01,0.001,0.00001,0.00001,NO,UNVERIFIED (see above)
-complete_no_collapse,0.05,0.01,0.0001,0.0001,NO,UNVERIFIED (see above)
-complete_collapse,0.40,0.20,0.05,0.10,NO,UNVERIFIED (see above)
+type,hazus_type,damage_case,severity_1,severity_2,severity_3,severity_4,source
+URM,URML,slight,0.0005,0,0,0,"Hazus 6.1 Earthquake Model Technical Manual, Table 12-3 (rates in the manual are percent; here fractions of occupants)"
+URM,URML,moderate,0.0035,0.004,0.00001,0.00001,Table 12-4
+URM,URML,extensive,0.02,0.002,0.00002,0.00002,Table 12-5
+URM,URML,complete_no_collapse,0.10,0.02,0.0002,0.0002,Table 12-6 (complete damage without collapse)
+URM,URML,complete_collapse,0.40,0.20,0.05,0.10,Table 12-7 (complete damage with collapse)
+RC_LOW,C3L,slight,0.0005,0,0,0,Table 12-3 (C3L = concrete frame with unreinforced masonry infill; the closest Hazus type to Indian RC frames with brick infill)
+RC_LOW,C3L,moderate,0.002,0.00025,0,0,Table 12-4
+RC_LOW,C3L,extensive,0.01,0.001,0.00001,0.00001,Table 12-5
+RC_LOW,C3L,complete_no_collapse,0.05,0.01,0.0001,0.0001,Table 12-6
+RC_LOW,C3L,complete_collapse,0.40,0.20,0.05,0.10,Table 12-7
+RC_MID,C3M,slight,0.0005,0,0,0,Table 12-3
+RC_MID,C3M,moderate,0.002,0.00025,0,0,Table 12-4
+RC_MID,C3M,extensive,0.01,0.001,0.00001,0.00001,Table 12-5
+RC_MID,C3M,complete_no_collapse,0.05,0.01,0.0001,0.0001,Table 12-6
+RC_MID,C3M,complete_collapse,0.40,0.20,0.05,0.10,Table 12-7
