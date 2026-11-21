@@ -23,7 +23,9 @@ Every change to a model number must be explained here (see MASTER_PLAN.md sectio
 - **Storeys** come from Google Open Buildings 2.5D Temporal heights (median over 2021-2023 of the zonal median inside each
   footprint, `heights.py`), then `num_floors`/height labels, then the old heuristic. New column `levels_src`
   (label, label_height, google, guess, guess_unstable). Heights with spread > 6 m or < 2 m are not trusted.
-  Noida: 67.3% google + 0.2% label storeys, see docs/exposure_check_noida.md. Storey height is 2.8 m (was 3.0 for height labels).
+  Noida (483,358 buildings): 66.7% google + 0.2% labelled = 66.9% measured (the plan's 80% target is NOT met; the 6 x 5 km
+  baseline box reaches 81.8%). 30% of Noida's footprints read < 2 m in the height product (62% of footprints < 20 m2, 47% of
+  20-50 m2) and fall back to the heuristic by design; only 2.7% fail on year-to-year spread. See docs/validation.md. Storey height is 2.8 m (was 3.0 for height labels).
 - **Construction type is now a probability mix** (`p_URM, p_RC_LOW, p_RC_MID`, `priors.py`). Damage is the mix of the three
   curves. One-hot weights reproduce v1 exactly (tests/test_regression.py passed unchanged at that step).
   The default census shares are an ASSUMPTION (priors/census_materials.csv), not looked up from the census tables.
