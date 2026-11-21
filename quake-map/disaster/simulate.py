@@ -57,8 +57,9 @@ class Model:
         nf = self._features(ni, self._geom_json(geoms[ni]))
         ff = ""
         if len(fi):
-            # simplify ~3 m, then round to 5 decimals (~1 m); rounding is ~13x faster than set_precision, same look
-            simple = shapely.transform(shapely.simplify(np.asarray(geoms[fi], dtype=object), 0.00003), lambda c: np.round(c, 5))
+            # simplify ~3 m, then snap to a 1e-5 degree (~1 m) grid. set_precision (not plain rounding) keeps shapes valid
+            # and identical to v1.0 (decision D2: no visual change accepted, even though rounding was ~13x faster)
+            simple = shapely.set_precision(shapely.simplify(np.asarray(geoms[fi], dtype=object), 0.00003), 1e-5)
             ff = self._features(fi, self._geom_json(simple))
         fc = '{"type":"FeatureCollection","features":[%s]}'
         return '{"run":%d,"near_r":%s,"near":%s,"far":%s}' % (self.run_id, near_r, fc % nf, fc % ff)
@@ -82,7 +83,8 @@ class Model:
         row = self.last.iloc[i]
         return {k: (row[k].item() if hasattr(row[k], "item") else row[k]) for k in DETAIL if k in row.index}
 
-    def __init__(self, path):
+    def __init__(self, path, data_dir=None):
+        self.data_dir = data_dir
         if isinstance(path, gpd.GeoDataFrame):
             g = path
         elif str(path).endswith(".parquet"):

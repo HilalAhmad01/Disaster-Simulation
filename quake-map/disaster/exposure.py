@@ -1,6 +1,8 @@
 """Turn raw building footprints into an exposure table: use, storeys, construction type, people."""
 import numpy as np, pandas as pd
 
+METHOD_VERSION = "1"    # bump whenever the exposure method changes; cached areas are then rebuilt from raw footprints
+
 LABEL = {}
 def _add(cat, *names):
     for n in names:

@@ -1,5 +1,5 @@
 """Soil stiffness (Vs30, m/s) at each building from the USGS Global Vs30 Mosaic (median GeoTIFF, ~900 m cells).
-Put vs30_mosaic_median_30c.tif in the data/ folder, or point the VS30_TIF environment variable at it.
+Put vs30_mosaic_median_30c.tif in data/rasters/ (data/ also works), or point the VS30_TIF environment variable at it.
 Without the file, a flat 250 m/s (soft alluvium) is used.
 """
 import os, pathlib
@@ -9,7 +9,12 @@ FLAT = 250.0
 FLAGS = (600, 601, 602, 603)    # ocean, ice, glacier, lake markers in the mosaic file
 _here = pathlib.Path(__file__).resolve().parent
 _root = _here.parent if _here.name == "backend" else _here
-DEFAULT = _root / "data" / "vs30_mosaic_median_30c.tif"
+def _default():
+    for p in (_root / "data" / "rasters" / "vs30_mosaic_median_30c.tif", _root / "data" / "vs30_mosaic_median_30c.tif"):
+        if p.exists():
+            return p
+    return _root / "data" / "rasters" / "vs30_mosaic_median_30c.tif"
+DEFAULT = _default()
 
 def bilinear(arr, x0, dx, y0, dy, lon, lat):
     """Sample a north-up grid (x0,y0 = outer corner of the first cell, dy negative) at points, interpolating between cell centres."""
@@ -23,9 +28,9 @@ def bilinear(arr, x0, dx, y0, dy, lon, lat):
 
 def vs30_at(lat, lon, tif=None):
     """Return (vs30 array, source text) for points given as numpy arrays of lat and lon."""
-    path = pathlib.Path(tif or os.environ.get("VS30_TIF") or DEFAULT)
+    path = pathlib.Path(tif or os.environ.get("VS30_TIF") or _default())
     if not path.exists():
-        return np.full(len(lat), FLAT), f"flat {FLAT:.0f} m/s (no soil map found at {path})"
+        return np.full(len(lat), FLAT), f"flat {FLAT:.0f} m/s (no soil map found)"
     import rasterio
     from rasterio.windows import from_bounds
     pad = 0.05

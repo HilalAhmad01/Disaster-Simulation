@@ -1,0 +1,63 @@
+{
+ "area": {
+  "buildings": 32400,
+  "exposure_version": "1",
+  "release": "2026-11-18.0"
+ },
+ "p_collapse_mean": 0.01069,
+ "p_collapse_pct": {
+  "1": 0.001,
+  "10": 0.001,
+  "50": 0.014,
+  "90": 0.017,
+  "99": 0.017
+ },
+ "p_extensive_mean": 0.07471,
+ "p_extensive_pct": {
+  "1": 0.013,
+  "10": 0.015,
+  "50": 0.099,
+  "90": 0.11,
+  "99": 0.112
+ },
+ "p_moderate_mean": 0.2903,
+ "p_moderate_pct": {
+  "1": 0.094,
+  "10": 0.102,
+  "50": 0.371,
+  "90": 0.394,
+  "99": 0.399
+ },
+ "p_slight_mean": 0.62989,
+ "p_slight_pct": {
+  "1": 0.36,
+  "10": 0.377,
+  "50": 0.743,
+  "90": 0.762,
+  "99": 0.765
+ },
+ "pga_pct": {
+  "1": 0.145,
+  "10": 0.146,
+  "50": 0.151,
+  "90": 0.154,
+  "99": 0.154
+ },
+ "scenario": {
+  "depth_km": 10,
+  "dlat": 0.45,
+  "dlon": 0.0,
+  "mag": 7.5
+ },
+ "summary": {
+  "buildings": 32400,
+  "expected_collapses": 348,
+  "heavy": 0,
+  "max_mmi": 6.5,
+  "max_pga": 0.155,
+  "people_at_risk": 24950,
+  "severe": 0,
+  "soil": "flat 250 m/s (no soil map found)",
+  "vs30_median": 250
+ }
+}

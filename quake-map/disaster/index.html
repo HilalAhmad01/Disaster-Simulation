@@ -12,13 +12,14 @@ aside{width:320px;flex:none;background:var(--paper);border-right:1px solid var(-
 #map{flex:1}
 h1{font-size:20px;margin:0 0 12px;font-weight:700}h2{font-size:15px;margin:18px 0 6px}
 label{display:block;font-weight:500;margin:8px 0 2px}
-input{width:100%;padding:7px 8px;border:1px solid var(--line);border-radius:4px;font:inherit}
+input,select{width:100%;padding:7px 8px;border:1px solid var(--line);border-radius:4px;font:inherit}
 .row{display:flex;gap:8px}.row>div{flex:1}
 button{width:100%;margin-top:12px;padding:10px;background:var(--ink);color:#fff;border:0;border-radius:4px;font:600 15px Barlow,sans-serif;cursor:pointer}
 button:disabled{opacity:.6;cursor:wait}
 .alt{background:#fff;color:var(--ink);border:1px solid var(--ink)}.alt.on{background:var(--yel)}
 .chk{display:flex;gap:8px;align-items:center;font-weight:400;margin:10px 0 0}.chk input{width:auto}
 .selbox{position:absolute;border:2px dashed var(--ink);background:rgba(28,38,48,.12);pointer-events:none;z-index:5}
+.prog{height:6px;background:var(--line);border-radius:3px;margin-top:6px;overflow:hidden}.prog i{display:block;height:100%;background:var(--ink);width:0;transition:width .3s}
 .hint{color:#5b6874;font-size:13px;margin:6px 0 0}
 .stat{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--line)}
 .legend span{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:6px;vertical-align:-1px}
@@ -34,6 +35,8 @@ button:disabled{opacity:.6;cursor:wait}
 <h1>Earthquake damage estimate</h1>
 <button id="area" type="button" class="alt">Load a new area: select on map</button>
 <p class="hint" id="areaMsg">Drag a box over any place (up to about 30 km across) to download its buildings and use them. The server needs internet access.</p>
+<div id="areaBox" hidden><label for="areaSel">Saved areas</label><select id="areaSel"></select>
+<button id="refresh" type="button" class="alt" hidden>Update to the latest Overture release</button></div>
 <div class="row"><div><label for="lat">Epicentre latitude</label><input id="lat" type="number" step="any"></div>
 <div><label for="lon">Epicentre longitude</label><input id="lon" type="number" step="any"></div></div>
 <div class="row"><div><label for="mag">Magnitude</label><input id="mag" type="number" step="0.1" value="6.5"></div>
@@ -64,6 +67,8 @@ const USE={residential:'Residential',office:'Office / commercial / civic',retail
 const pct=v=>Math.round(v*100)+'%';
 let map,epi,pins=[],lastRun=null,hot=[],selecting=null,selBox=null,runId=0,is3d=false,runNo=0,cov=null,ctl=null,moveT=null;
 fetch('/api/meta').then(r=>r.json()).then(m=>{
+  if(m.empty){$('areaMsg').innerHTML='<b>No area loaded yet.</b> Press <b>Load a new area</b>, then drag a box over a place (up to about 30 km across). Buildings are downloaded once and saved for next time.'}
+  listAreas();
   $('lon').value=m.center[0].toFixed(4);$('lat').value=m.center[1].toFixed(4);
   map=new maplibregl.Map({container:'map',center:m.center,zoom:11,maxPitch:75,preserveDrawingBuffer:true,style:{version:8,
     sources:{osm:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OpenStreetMap contributors'}},
@@ -179,20 +184,54 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&selecting){selectin
     (map.loaded()&&!map.isMoving())?go():map.once('idle',go);
   });
 })();
-async function loadArea(w,s,e,n){
-  const m=$('areaMsg');m.textContent='Downloading buildings for this area. This can take a minute…';$('area').disabled=true;
+let lastBox=null;
+async function pollJob(id,m){
+  for(;;){
+    const r=await fetch('/api/jobs/'+id);if(!r.ok)throw new Error('Lost track of the download.');
+    const j=await r.json();
+    m.innerHTML=`${esc(j.message)}<div class="prog"><i style="width:${Math.round(j.progress*100)}%"></i></div>`;
+    if(j.state==='done')return j.result;
+    if(j.state==='error')throw new Error(j.error||'Download failed.');
+    await new Promise(ok=>setTimeout(ok,1000));
+  }
+}
+function applyArea(d){
+  runId++;runNo=0;resetBld();pins.forEach(p=>p.remove());pins=[];hot=[];lastRun=null;$('hots').innerHTML='';$('out').hidden=true;
+  ['cells','bld','far'].forEach(id=>{const src=map.getSource(id);if(src)src.setData({type:'FeatureCollection',features:[]})});
+  map.fitBounds([[d.bounds[0],d.bounds[1]],[d.bounds[2],d.bounds[3]]],{padding:40,duration:800});
+  $('lon').value=d.center[0].toFixed(4);$('lat').value=d.center[1].toFixed(4);placeEpi();
+}
+async function loadArea(w,s,e,n,refresh){
+  lastBox=[w,s,e,n];
+  const m=$('areaMsg');m.textContent='Starting…';$('area').disabled=true;$('refresh').disabled=true;
   try{
-    const r=await fetch('/api/area',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({w,s,e,n})});
+    const r=await fetch('/api/area',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({w,s,e,n,refresh:!!refresh})});
     const d=await r.json();
     if(!r.ok)throw new Error(typeof d.detail==='string'?d.detail:'Check the box and try again.');
-    runId++;runNo=0;resetBld();pins.forEach(p=>p.remove());pins=[];hot=[];lastRun=null;$('hots').innerHTML='';$('out').hidden=true;
-    ['cells','bld','far'].forEach(id=>{const src=map.getSource(id);if(src)src.setData({type:'FeatureCollection',features:[]})});
-    map.fitBounds([[d.bounds[0],d.bounds[1]],[d.bounds[2],d.bounds[3]]],{padding:40,duration:800});
-    $('lon').value=d.center[0].toFixed(4);$('lat').value=d.center[1].toFixed(4);placeEpi();
-    m.innerHTML=`Loaded ${d.buildings.toLocaleString()} buildings (about ${d.people.toLocaleString()} people). <a href="/api/area/download" download>Download as parquet</a>`;
+    const res=await pollJob(d.job,m);       // the map stays usable while this runs
+    applyArea(res);
+    m.innerHTML=`Loaded ${res.buildings.toLocaleString()} buildings (about ${res.people.toLocaleString()} people)${res.cached?' from saved data':''}. <a href="/api/area/download" download>Download as parquet</a>`+(res.update_note?`<br>${esc(res.update_note)}`:'');
+    $('refresh').hidden=!res.update_note;
+    listAreas();
   }catch(err){m.textContent=err.message}
-  $('area').disabled=false;
+  $('area').disabled=false;$('refresh').disabled=false;
 }
+$('refresh').onclick=()=>{if(lastBox)loadArea(...lastBox,true)};
+async function listAreas(){
+  try{
+    const d=await (await fetch('/api/areas')).json();
+    $('areaBox').hidden=d.areas.length<1;
+    $('areaSel').innerHTML=d.areas.map(a=>`<option value="${esc(a.id)}"${a.id===d.active?' selected':''}>${esc(a.name)} · ${a.buildings.toLocaleString()} buildings</option>`).join('');
+  }catch(e){}
+}
+$('areaSel').onchange=async()=>{
+  const m=$('areaMsg');m.textContent='Switching area…';
+  try{
+    const r=await fetch(`/api/areas/${encodeURIComponent($('areaSel').value)}/activate`,{method:'POST'});
+    const d=await r.json();if(!r.ok)throw new Error(d.detail||'Could not switch.');
+    applyArea(d);m.textContent=`Using ${d.buildings.toLocaleString()} buildings (about ${d.people.toLocaleString()} people).`;$('refresh').hidden=true;
+  }catch(err){m.textContent=err.message}
+};
 function makePng(x,y,w,h){
   const cv=map.getCanvas(),k=cv.width/cv.clientWidth,S=v=>Math.round(v*k);
   const W=Math.max(S(w),S(520)),hd=S(58),ft=S(110),H=hd+S(h)+ft,ox=Math.round((W-S(w))/2);
