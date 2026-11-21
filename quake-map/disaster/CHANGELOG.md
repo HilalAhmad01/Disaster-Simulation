@@ -55,3 +55,13 @@ Why: (1) distance now enters through Ztor (M6.5 at 15 km depth: ~8.9 km instead 
 near the source is higher; (2) types are mixed, so some "masonry" buildings are now concrete and vice versa; (3) people use
 GHS-POP (the box total fell from ~771k capacity to ~527k). These are a *calibration gap*, not a finding: the fragility
 curves are still the v1 placeholders until Phase 3.
+
+### Phase 3: calibration and validation
+- Fragility curves now load from `priors/fragility.json` (status: UNCALIBRATED placeholder). `calibration.py` + tools implement the full
+  fitting chain, tested on synthetic survey data; the real Nepal survey was not obtainable, so no curve was fitted (docs/calibration/README.md).
+- Event replays with real data (docs/validation.md): weak/inconclusive skill, reported as such.
+
+### Phase 4: uncertainty ranges
+- `uncertainty.py`: seeded Monte Carlo (200 runs, 26 s for 483k Noida buildings): between-event term, spatially correlated within-event field,
+  fragility draws, construction-type draws, occupancy factor. `POST /api/simulate` returns `uncertainty_job`; `GET /api/uncertainty/{run}`.
+  UI: ranges, worst-case priorities, popup "up to x% in a bad case", PNG footer. Fragility (+-25%) and occupancy (+-20%) spreads are assumptions.

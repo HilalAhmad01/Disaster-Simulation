@@ -56,13 +56,13 @@ details{margin:10px 0 0}summary{cursor:pointer;font-weight:500}
 <label class="chk"><input type="checkbox" id="shrink"> Lower buildings by their collapse chance</label>
 <p class="hint">3D shows each building at about 3 m per storey. The lowering option is a visual cue for expected collapse, not a prediction of how any building falls.</p>
 <button id="dl" type="button" class="alt">Save map as image</button><p class="hint">Drag a box to choose what to save. A click without dragging saves the whole view.</p>
-<h2>Summary</h2><div id="sum"></div>
+<h2>Summary</h2><div id="sum"></div><div id="unc"></div>
 <h2>Legend</h2><div class="legend">
 <div><span style="background:var(--red)"></span>Severe damage or collapse risk</div>
 <div><span style="background:var(--yel)"></span>Moderate damage</div>
 <div><span style="background:var(--grn)"></span>Light damage</div>
 <div><span style="background:var(--blu)"></span>Little or no damage</div></div>
-<h2>Most at-risk neighbourhoods</h2><div id="hots"></div></div>
+<h2>Most at-risk neighbourhoods</h2><button id="worst" type="button" class="alt" hidden>Show worst-case priorities</button><div id="hots"></div></div>
 <p class="hint">Estimates for planning, not confirmed damage. Zoom in past street level to see individual buildings.</p>
 </aside><div id="map"></div></div>
 <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
@@ -146,7 +146,7 @@ function show(d){
         const r=await fetch(`/api/building/${f.id}?run=${runNo}`),p=await r.json();
         if(!r.ok)throw new Error(typeof p.detail==='string'?p.detail:'Could not load this building.');
         pop.setHTML(`<b>${CAT[p.cat]}</b><br>${USE[p.use]?USE[p.use]+'<br>':''}${typeLine(p)}<br>${p.levels} storey${p.levels>1?'s':''}${SRC[p.levels_src]?' ('+SRC[p.levels_src]+')':''}<br>`+
-          `Shaking: MMI ${p.mmi} (${p.pga} g)${p.vs30?', soil Vs30 '+p.vs30+' m/s':''}<br>Chance of heavy damage: ${pct(p.p_extensive)}<br>Chance of collapse: ${pct(p.p_collapse)}<br>`+
+          `Shaking: MMI ${p.mmi} (${p.pga} g)${p.vs30?', soil Vs30 '+p.vs30+' m/s':''}<br>Chance of heavy damage: ${pct(p.p_extensive_mean!=null?p.p_extensive_mean:p.p_extensive)}${p.p_extensive_p90!=null?' (up to '+pct(p.p_extensive_p90)+' in a bad case)':''}<br>Chance of collapse: ${pct(p.p_collapse)}<br>`+
           `Est. occupants (${TOD[lastRun?lastRun.tod:'night']}): ${p.occupants} (about ${Math.round(p.risk)} at risk)`);
       }catch(err){pop.setHTML(esc(err.message))}
     });
@@ -158,13 +158,26 @@ function show(d){
   $('sum').innerHTML=[['Buildings assessed',s.buildings],['Severe damage or collapse risk',s.severe],['Moderate damage or worse',s.heavy],
     ['Expected collapses',s.expected_collapses],['People at risk ('+(TOD[s.time_of_day]||'night')+')',s.people_at_risk],['Peak shaking (g)',s.max_pga],['Peak intensity (MMI)',s.max_mmi],...(s.vs30_median!=null?[['Soil stiffness (Vs30)',(s.soil||'').startsWith('USGS')?s.vs30_median+' m/s':'flat '+s.vs30_median+' m/s']]:[])]
     .map(([k,v])=>`<div class="stat"><span>${k}</span><b>${v.toLocaleString()}</b></div>`).join('')+dataNotes(s);
-  const run=++runId,refs=[];
-  const cardHtml=(p,n)=>`<b>${n?n+' (priority '+p.rank+')':'Priority '+p.rank}</b><br>${p.n} buildings, ${p.heavy} moderately damaged or worse, ${p.severe} severe<br>About ${p.risk.toLocaleString()} people at risk<br>${p.dist_km} km from epicentre`;
-  const rowHtml=(p,n)=>`<b>${p.rank}</b> ${n?n+': ':''}${p.risk.toLocaleString()} people at risk, ${p.heavy} moderate or worse`;
-  d.cells.features.filter(f=>f.properties.rank).sort((a,b)=>a.properties.rank-b.properties.rank).forEach(f=>{
-    const p=f.properties,c=f.geometry.coordinates;
+  const run=++runId;
+  lastData=d;mcRep=null;worstOn=false;
+  $('unc').innerHTML='';$('worst').hidden=true;$('worst').textContent='Show worst-case priorities';$('worst').classList.remove('on');
+  drawPriority(run);
+  $('out').hidden=false;resetBld();loadBld();
+  if(d.uncertainty_job)pollUnc(run,d.run);
+}
+// priority pins/list: expected values from the quick run, or worst-case (90th percentile) once the Monte Carlo is done
+let lastData=null,mcRep=null,worstOn=false;
+function drawPriority(run){
+  pins.forEach(m=>m.remove());pins=[];hot=[];$('hots').innerHTML='';
+  const refs=[],worst=worstOn&&mcRep;
+  const cardHtml=(p,n)=>worst?`<b>${n?n+' (worst case '+p.rank+')':'Worst case '+p.rank}</b><br>${p.n} buildings<br>People at risk: ${p.risk.toLocaleString()} expected-case median, up to ${p.risk90.toLocaleString()} in a bad case`
+    :`<b>${n?n+' (priority '+p.rank+')':'Priority '+p.rank}</b><br>${p.n} buildings, ${p.heavy} moderately damaged or worse, ${p.severe} severe<br>About ${p.risk.toLocaleString()} people at risk<br>${p.dist_km} km from epicentre`;
+  const rowHtml=(p,n)=>worst?`<b>${p.rank}</b> ${n?n+': ':''}up to ${p.risk90.toLocaleString()} at risk (median ${p.risk.toLocaleString()})`:`<b>${p.rank}</b> ${n?n+': ':''}${p.risk.toLocaleString()} people at risk, ${p.heavy} moderate or worse`;
+  const items=worst?mcRep.worst_case_cells.map(w=>({p:{rank:w.rank,n:w.n,risk:w.risk_p50,risk90:w.risk_p90},c:[w.lon,w.lat]}))
+    :lastData.cells.features.filter(f=>f.properties.rank).sort((a,b)=>a.properties.rank-b.properties.rank).map(f=>({p:f.properties,c:f.geometry.coordinates}));
+  items.forEach(({p,c})=>{
     hot.push({rank:p.rank,c});
-    const el=document.createElement('div');el.className='pin';el.textContent=p.rank;
+    const el=document.createElement('div');el.className='pin';el.textContent=p.rank;if(worst)el.style.background='#7a1020';
     const pop=new maplibregl.Popup({offset:16}).setHTML(cardHtml(p,null));
     pins.push(new maplibregl.Marker({element:el}).setLngLat(c).setPopup(pop).addTo(map));
     const b=document.createElement('button');b.className='hot';b.innerHTML=rowHtml(p,null);
@@ -172,7 +185,29 @@ function show(d){
     refs.push({p,c,pop,b});
   });
   nameAreas(run,refs,cardHtml,rowHtml);
-  $('out').hidden=false;resetBld();loadBld();
+}
+$('worst').onclick=()=>{worstOn=!worstOn;$('worst').textContent=worstOn?'Show expected priorities':'Show worst-case priorities';$('worst').classList.toggle('on',worstOn);drawPriority(++runId)};
+let uncTok=0;
+async function pollUnc(run,simRun){
+  const my=++uncTok,box=$('unc');box.innerHTML='<p class="hint">Computing uncertainty… 0%</p>';
+  for(let i=0;i<600;i++){
+    if(my!==uncTok)return;                                                   // a newer simulation or area replaced this one
+    try{
+      const r=await fetch('/api/uncertainty/'+simRun);if(!r.ok)throw new Error('lost');const j=await r.json();
+      if(my!==uncTok)return;
+      if(j.state==='error'){box.innerHTML='<p class="hint">Ranges could not be computed.</p>';return}
+      if(j.state==='done'){mcRep=j;showRanges(j);return}
+      box.innerHTML=`<p class="hint">${esc(j.message||'Computing uncertainty…')}</p><div class="prog"><i style="width:${Math.round((j.progress||0)*100)}%"></i></div>`;
+    }catch(e){box.innerHTML='';return}
+    await new Promise(ok=>setTimeout(ok,1000));
+  }
+}
+function showRanges(j){
+  const t=j.totals,f=v=>Math.round(v).toLocaleString();
+  $('unc').innerHTML=`<h2>Ranges (${j.n} simulations)</h2>`+[['People at risk',t.people_at_risk],['Expected collapses',t.expected_collapses],['Moderate damage or worse (buildings)',t.moderate_or_worse]]
+    .map(([k,v])=>`<div class="stat"><span>${k}</span><b>${f(v.p10)} to ${f(v.p90)}</b></div>`).join('')+
+    `<p class="hint">10th to 90th percentile, median ${f(t.people_at_risk.p50)} people. The spread comes from uncertain shaking, building strength, construction type and population. Fragility spread is an assumption (±25%) until the curves are calibrated.</p>`;
+  $('worst').hidden=false;if(lastRun)lastRun.ranges=t;
 }
 // ---- box selection: "png" saves a map image, "area" downloads buildings for that area ----
 $('dl').onclick=()=>{if(map){selecting=selecting==='png'?null:'png';selUI()}};
@@ -221,7 +256,7 @@ async function pollJob(id,m){
   }
 }
 function applyArea(d){
-  runId++;runNo=0;resetBld();pins.forEach(p=>p.remove());pins=[];hot=[];lastRun=null;$('hots').innerHTML='';$('out').hidden=true;
+  uncTok++;runId++;runNo=0;resetBld();pins.forEach(p=>p.remove());pins=[];hot=[];lastRun=null;$('hots').innerHTML='';$('out').hidden=true;
   ['cells','bld','far','rup'].forEach(id=>{const src=map.getSource(id);if(src)src.setData({type:'FeatureCollection',features:[]})});
   map.fitBounds([[d.bounds[0],d.bounds[1]],[d.bounds[2],d.bounds[3]]],{padding:40,duration:800});
   $('lon').value=d.center[0].toFixed(4);$('lat').value=d.center[1].toFixed(4);placeEpi();
@@ -279,7 +314,8 @@ function makePng(x,y,w,h){
   [['Little or none',COL[0]],['Light',COL[1]],['Moderate',COL[2]],['Severe / collapse',COL[3]]].forEach(([t,col],i)=>{
     c.fillStyle=col;c.fillRect(S(14+i*125),fy+S(14),S(12),S(12));c.fillStyle='#1c2630';c.font=F(12);c.fillText(t,S(32+i*125),fy+S(24))});
   if(lastRun){const s=lastRun.s;c.font=F(12);c.fillStyle='#1c2630';
-    c.fillText(`Whole city: ${s.buildings.toLocaleString()} buildings, ${s.heavy.toLocaleString()} moderate or worse, ${s.people_at_risk.toLocaleString()} people at risk, peak MMI ${s.max_mmi}`,S(14),fy+S(48))}
+    const rg=lastRun.ranges?` (${Math.round(lastRun.ranges.people_at_risk.p10).toLocaleString()} to ${Math.round(lastRun.ranges.people_at_risk.p90).toLocaleString()}, 10-90%)`:'';
+    c.fillText(`Whole city: ${s.buildings.toLocaleString()} buildings, ${s.heavy.toLocaleString()} moderate or worse, ${s.people_at_risk.toLocaleString()} people at risk${rg}, peak MMI ${s.max_mmi}`,S(14),fy+S(48))}
   c.font=F(11);c.fillStyle='#5b6874';
   c.fillText('Estimate for planning, not confirmed damage.',S(14),fy+S(70));
   c.fillText('Map © OpenStreetMap contributors. Buildings: Overture Maps Foundation, OpenStreetMap contributors.',S(14),fy+S(88));

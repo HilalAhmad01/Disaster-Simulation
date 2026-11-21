@@ -42,6 +42,7 @@ class State:
         self.registry, self.jobs = Registry(self.data), Jobs(workers=2)
         self.model, self.active_id, self.legacy_file = None, None, None
         self.lock = threading.Lock()
+        self.mc, self.mc_jobs = {}, {}              # run number -> uncertainty report / job id
         self.load_default()
 
     def load_default(self):
@@ -66,6 +67,24 @@ class State:
             self.model, self.active_id = m, aid
         self.registry.touch(aid)
         return m
+
+    def start_uncertainty(self, model, run_id, deterministic):
+        """Monte Carlo for the run just made, as a background job on a snapshot of that run."""
+        import uncertainty
+        snap = model.mc_snapshot()
+        def work(job):
+            res = uncertainty.run_mc(model, n=200, seed=run_id, snapshot=snap, progress=lambda f: job.update(f, f"Computing uncertainty… {int(f * 100)}%"))
+            rep = uncertainty.report(snap, res, deterministic)
+            self.mc[run_id] = rep
+            for old in sorted(self.mc)[:-5]:
+                self.mc.pop(old, None)
+            if model.run_id == run_id:              # popups show the ranges only while this run is the one on the map
+                model.mc = {"run": run_id, "p_extensive_mean": res["p_extensive_mean"], "p_extensive_p90": res["p_extensive_p90"],
+                            "p_collapse_mean": res["p_collapse_mean"]}
+            return {"run": run_id}
+        job = self.jobs.submit("uncertainty", work)
+        self.mc_jobs[run_id] = job.id
+        return job.id
 
     def need(self):
         if self.model is None:
@@ -148,7 +167,20 @@ def create_app(data_dir=None):
         m = st.need()
         out = m.run(q.lat, q.lon, q.depth_km, q.magnitude, time_of_day=q.time_of_day,
                     strike=q.strike, dip=q.dip, rake=q.rake)
-        return JSONResponse(out)           # already plain types, skip re-encoding
+        if q.uncertainty:
+            out["uncertainty_job"] = st.start_uncertainty(m, out["run"], {k: out["summary"][k] for k in ("people_at_risk", "expected_collapses", "heavy")})
+        return JSONResponse(out)
+
+    @app.get("/api/uncertainty/{run}")
+    def uncertainty_result(run: int):
+        """Ranges for a run: the report when finished, otherwise the job's progress."""
+        if run in st.mc:
+            return {"state": "done", **st.mc[run]}
+        jid = st.mc_jobs.get(run)
+        j = st.jobs.get(jid) if jid else None
+        if j is None:
+            raise HTTPException(404, "No uncertainty run for that simulation.")
+        return {"state": j.state, "progress": j.progress, "message": j.message, **({"error": j.error} if j.state == "error" else {})}           # already plain types, skip re-encoding
 
     @app.get("/api/buildings")
     def buildings(w: float, s: float, e: float, n: float):

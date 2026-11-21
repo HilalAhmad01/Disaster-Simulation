@@ -1,0 +1,12 @@
+{
+ "status": "UNCALIBRATED PLACEHOLDER",
+ "source": "v1.0 placeholder medians and a single dispersion of 0.6. NOT fitted to data and NOT taken from HAZUS or GEM. Replace by running tools/calibrate_fragility.py --apply once the Nepal 2015 survey is available (see docs/calibration/README.md).",
+ "pga_g_medians_slight_moderate_extensive_complete": {
+  "URM": [0.10, 0.18, 0.32, 0.55],
+  "RC_LOW": [0.18, 0.32, 0.55, 0.90],
+  "RC_MID": [0.14, 0.26, 0.45, 0.75]
+ },
+ "beta": {"URM": 0.6, "RC_LOW": 0.6, "RC_MID": 0.6},
+ "class_status": {"URM": "placeholder", "RC_LOW": "placeholder", "RC_MID": "placeholder"},
+ "samples": {}
+}

@@ -8,12 +8,18 @@ import rupture, gmm
 from soil import vs30_at
 from scipy.special import ndtr
 
-# Median PGA (g) at which damage state is reached: slight, moderate, extensive, complete.
-# PLACEHOLDERS: replace with HAZUS / GEM fragility curves for Indian building types.
-FRAG = {"URM": (0.10, 0.18, 0.32, 0.55),
-        "RC_LOW": (0.18, 0.32, 0.55, 0.90),
-        "RC_MID": (0.14, 0.26, 0.45, 0.75)}
-BETA = {"URM": 0.6, "RC_LOW": 0.6, "RC_MID": 0.6}   # lognormal dispersion per type (Phase 3 replaces these with fitted values)
+def load_fragility(path=None):
+    """Median PGA (g) for slight/moderate/extensive/complete damage and lognormal dispersion per construction type, from
+    data/priors/fragility.json (user calibration) or the shipped priors/fragility.json. The file carries its own provenance;
+    shipped values are UNCALIBRATED v1 placeholders until Phase 3 data is available. Also returns per-class status text and
+    any stored bootstrap samples (used by the Monte Carlo)."""
+    import pathlib, priors as _p
+    f = pathlib.Path(path) if path else _p.path("fragility.json")
+    d = json.loads(f.read_text())
+    frag = {t: tuple(float(x) for x in v) for t, v in d["pga_g_medians_slight_moderate_extensive_complete"].items()}
+    return frag, {t: float(v) for t, v in d["beta"].items()}, d
+
+FRAG, BETA, FRAGILITY_META = load_fragility()
 TYPES = ("URM", "RC_LOW", "RC_MID")
 TIMES = ("night", "day", "commute")
 
@@ -107,7 +113,11 @@ class Model:
         if self.last is None or not 0 <= i < len(self.last):
             return None
         row = self.last.iloc[i]
-        return {k: (row[k].item() if hasattr(row[k], "item") else row[k]) for k in DETAIL if k in row.index}
+        d = {k: (row[k].item() if hasattr(row[k], "item") else row[k]) for k in DETAIL if k in row.index}
+        mc = getattr(self, "mc", None)
+        if mc and mc["run"] == self.run_id:                       # ranges from the Monte Carlo, once it has finished
+            d["p_extensive_mean"], d["p_extensive_p90"] = round(float(mc["p_extensive_mean"][i]), 3), round(float(mc["p_extensive_p90"][i]), 3)
+        return d
 
     def __init__(self, path, data_dir=None):
         self.data_dir = data_dir
@@ -136,17 +146,27 @@ class Model:
         self.occ_by["commute"] = self.g["occ_commute"].to_numpy(float) if "occ_commute" in self.g else self.occ_by["night"]
         self.stats = dict(getattr(self.g, "attrs", {}).get("stats") or {})
 
-    def run(self, lat, lon, depth_km, mag, time_of_day="night", strike=None, dip=None, rake=None):
+    def run(self, lat, lon, depth_km, mag, time_of_day="night", strike=None, dip=None, rake=None, pga_override=None):
         """One scenario. strike (degrees clockwise from north) switches on a finite rectangular rupture (dip and rake
-        optional); without it the epicentral distance is converted to an average Rjb (see rupture.py)."""
+        optional); without it the epicentral distance is converted to an average Rjb (see rupture.py).
+        pga_override: per-building PGA in g (e.g. from a ShakeMap) used instead of the ground-motion models; the damage,
+        people and aggregation steps are unchanged (used to validate the damage model apart from the shaking model)."""
         if time_of_day not in TIMES:
             raise ValueError(f"time_of_day must be one of {TIMES}")
         occ = self.occ_by[time_of_day]
-        dx, dy = local_xy(lat, lon, self.lat, self.lon)
-        r_eff, rjb, geo = rupture.distances(dx, dy, mag, depth_km, strike, dip, rake)
-        region = gmm.region_for(lat, lon)
-        mu, sigma, tau, phi, gm = gmm.pga(mag, r_eff, self.vs30, geo["mech"], region)
-        pga = np.exp(mu)
+        if pga_override is not None:
+            pga = np.asarray(pga_override, float)
+            mu = np.log(np.maximum(pga, 1e-9))
+            sigma = tau = phi = np.zeros_like(mu)
+            rjb = r_eff = np.full(len(mu), np.nan)
+            geo = {"method": "external shaking map", "mech": "unspec", "ztor_km": 0.0, "rupture": None}
+            gm = {"region": "external", "models": [], "beyond_validity": False}
+        else:
+            dx, dy = local_xy(lat, lon, self.lat, self.lon)
+            r_eff, rjb, geo = rupture.distances(dx, dy, mag, depth_km, strike, dip, rake)
+            region = gmm.region_for(lat, lon)
+            mu, sigma, tau, phi, gm = gmm.pga(mag, r_eff, self.vs30, geo["mech"], region)
+            pga = np.exp(mu)
         self.haz = {"mu": mu, "sigma": sigma, "tau": tau, "phi": phi, "rjb": rjb, "r_eff": r_eff,
                     "scenario": dict(lat=lat, lon=lon, depth_km=depth_km, mag=mag, strike=strike, dip=dip, rake=rake, time_of_day=time_of_day)}
         p = damage_probs(pga, self.W)                            # P(damage >= state), mixed over construction types
@@ -190,6 +210,25 @@ class Model:
                             "people_total": int(round(occ.sum())), "distance_method": geo["method"],
                             "mechanism": geo["mech"], "ztor_km": round(geo["ztor_km"], 1), "gm_region": gm["region"],
                             "gm_models": gm["models"], "beyond_validity": gm["beyond_validity"], **self._data_notes()}}
+
+    def correlation_field(self, b_km=8.5):
+        """Cached spatially correlated field generator for this area (Cholesky built once per range b)."""
+        import uncertainty
+        cache = self.__dict__.setdefault("_fields", {})
+        if b_km not in cache:
+            cache[b_km] = uncertainty.CorrelatedField(self.x, self.y, b_km)
+        return cache[b_km]
+
+    def mc_snapshot(self):
+        """Everything the Monte Carlo needs from the last run, copied so later runs cannot change it under a background job."""
+        if getattr(self, "haz", None) is None or self.last is None:
+            raise ValueError("Run a simulation first.")
+        h = self.haz
+        key = (self.x // 500).astype(np.int64) * 100000 + (self.y // 500).astype(np.int64)
+        cell = pd.factorize(key, sort=True)[0]
+        return {"mu": h["mu"].copy(), "tau": np.asarray(h["tau"]).copy(), "phi": np.asarray(h["phi"]).copy(), "W": self.W, "frag": dict(FRAG), "beta": dict(BETA),
+                "samples": FRAGILITY_META.get("samples", {}), "occ": self.occ_by[h["scenario"]["time_of_day"]], "cell": cell, "run": self.run_id, "lat": self.lat, "lon": self.lon,
+                "scenario": dict(h["scenario"])}
 
     @staticmethod
     def _rupture_geojson(lat, lon, geo):
