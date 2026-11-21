@@ -154,3 +154,17 @@ def test_driver_end_to_end_recovers_curves_on_synthetic_survey(tmp_path):
     assert fit["beta"]["mle"] == pytest.approx(TRUE_BETA, rel=0.15) and fit["truncated"]
     new = __import__("json").loads((tmp_path / "out" / "fragility.json").read_text())
     assert "fitted" in new["class_status"]["URM"] and "kept previous" in new["class_status"]["RC_LOW"]
+
+def test_binary_fit_recovers_curve_and_scores_beat_the_base_rate():
+    rng = np.random.default_rng(3)
+    theta, beta = 0.55, 0.5
+    x = rng.uniform(np.log(0.05), np.log(1.2), 60); s = np.full(60, 0.3); n = np.full(60, 400)
+    k = rng.binomial(n, C.ndtr((x - np.log(theta)) / np.hypot(beta, s)))
+    f = C.fit_binary(x, s, k, n)
+    assert f["success"] and f["theta"] == pytest.approx(theta, rel=0.12) and f["beta"] == pytest.approx(beta, rel=0.3)
+    p = C.predict_binary(f, x, s)
+    sc = C.score_binary(p, k, n, k.sum() / n.sum())
+    assert sc["skill_logloss"] > 0.3 and sc["brier"] < sc["brier_null"]
+    assert C.score_binary(np.full(60, k.sum() / n.sum()), k, n, k.sum() / n.sum())["skill_logloss"] == pytest.approx(0, abs=1e-9)
+    bins = C.calibration_bins(p, k, n)
+    assert all(abs(b["predicted"] - b["observed"]) < 0.08 for b in bins if b["n"] > 1000)

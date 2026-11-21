@@ -1,0 +1,242 @@
+{
+ "destroyed": {
+  "fit_all_towns": {
+   "theta": 2.324326154121009,
+   "beta": 0.6342178331098131,
+   "nll": 2122.1180077668705,
+   "success": true
+  },
+  "loto": [
+   {
+    "held_out_town": "Bharatpur",
+    "theta_g": 0.782,
+    "beta": 0.0,
+    "median_pga_g": 0.43,
+    "observed_rate": 0.0003318217011392545,
+    "predicted_rate": 0.12917554513439636,
+    "n": 18082,
+    "events": 6,
+    "log_loss": 0.13907152783399182,
+    "log_loss_null": 0.029487593842956232,
+    "brier": 0.017136607718950238,
+    "brier_null": 0.0010924078872950643,
+    "skill_logloss": -3.716272496652423
+   },
+   {
+    "held_out_town": "Bidur",
+    "theta_g": 3.956,
+    "beta": 0.87,
+    "median_pga_g": 0.595,
+    "observed_rate": 0.6593406593406593,
+    "predicted_rate": 0.026509938034981657,
+    "n": 182,
+    "events": 120,
+    "log_loss": 2.3984651445162455,
+    "log_loss_null": 3.0569393828182614,
+    "brier": 0.62480648696602,
+    "brier_null": 0.6465888602402848,
+    "skill_logloss": 0.2154031061273297
+   },
+   {
+    "held_out_town": "Chilime",
+    "theta_g": 5.333,
+    "beta": 1.019,
+    "median_pga_g": 0.568,
+    "observed_rate": 0.35054347826086957,
+    "predicted_rate": 0.026300228461746237,
+    "n": 368,
+    "events": 129,
+    "log_loss": 1.2881444145084975,
+    "log_loss_null": 1.6374766527350473,
+    "brier": 0.33254154517177037,
+    "brier_null": 0.34395426147100916,
+    "skill_logloss": 0.2133357062789668
+   },
+   {
+    "held_out_town": "Kathmandu",
+    "theta_g": 1.412,
+    "beta": 0.0,
+    "median_pga_g": 0.423,
+    "observed_rate": 0.2503419972640219,
+    "predicted_rate": 0.0015427816495446642,
+    "n": 731,
+    "events": 183,
+    "log_loss": 1.6373202827358262,
+    "log_loss_null": 1.2145452784426853,
+    "brier": 0.24959742635433782,
+    "brier_null": 0.24639725736172413,
+    "skill_logloss": -0.34809324262923447
+   },
+   {
+    "held_out_town": "Pokhara",
+    "theta_g": 3.301,
+    "beta": 0.869,
+    "median_pga_g": 0.245,
+    "observed_rate": 0.0005491865174709961,
+    "predicted_rate": 0.0054826133777858025,
+    "n": 14567,
+    "events": 8,
+    "log_loss": 0.008410771291059802,
+    "log_loss_null": 0.025076190448211164,
+    "brier": 0.0005742748386684187,
+    "brier_null": 0.0010416888860758876,
+    "skill_logloss": 0.664591345785548
+   }
+  ],
+  "calibration": [
+   {
+    "predicted_range": "0.0001-0.001",
+    "n": 63,
+    "predicted": 0.0008627060209666107,
+    "observed": 0.3492063492063492
+   },
+   {
+    "predicted_range": "0.001-0.01",
+    "n": 15235,
+    "predicted": 0.005312678173987662,
+    "observed": 0.011092878240892681
+   },
+   {
+    "predicted_range": "0.01-0.05",
+    "n": 550,
+    "predicted": 0.026369623265980503,
+    "observed": 0.4527272727272727
+   },
+   {
+    "predicted_range": "0.05-0.2",
+    "n": 18082,
+    "predicted": 0.12917554513439636,
+    "observed": 0.0003318217011392545
+   }
+  ],
+  "pooled": {
+   "log_loss": 0.13983642791665432,
+   "log_loss_null": 0.06999759028613536,
+   "brier": 0.021714570889035934,
+   "brier_null": 0.012971932616228093,
+   "skill_logloss": -0.9977320268459606,
+   "n": 33930,
+   "events": 446
+  }
+ },
+ "damaged or destroyed": {
+  "fit_all_towns": {
+   "theta": 2.2390349279251502,
+   "beta": 0.6170021161316602,
+   "nll": 2166.5884396809242,
+   "success": true
+  },
+  "loto": [
+   {
+    "held_out_town": "Bharatpur",
+    "theta_g": 0.777,
+    "beta": 0.0,
+    "median_pga_g": 0.43,
+    "observed_rate": 0.0003318217011392545,
+    "predicted_rate": 0.13152297145697506,
+    "n": 18082,
+    "events": 6,
+    "log_loss": 0.14176810452706867,
+    "log_loss_null": 0.03032069583993669,
+    "brier": 0.017752051177994922,
+    "brier_null": 0.0011382617815256966,
+    "skill_logloss": -3.6756217362379857
+   },
+   {
+    "held_out_town": "Bidur",
+    "theta_g": 3.661,
+    "beta": 0.837,
+    "median_pga_g": 0.595,
+    "observed_rate": 0.6593406593406593,
+    "predicted_rate": 0.027949277758725525,
+    "n": 182,
+    "events": 120,
+    "log_loss": 2.3640324920225018,
+    "log_loss_null": 3.0315204144632837,
+    "brier": 0.6229653971297502,
+    "brier_null": 0.6460888881161936,
+    "skill_logloss": 0.22018255897477024
+   },
+   {
+    "held_out_town": "Chilime",
+    "theta_g": 4.809,
+    "beta": 0.977,
+    "median_pga_g": 0.568,
+    "observed_rate": 0.35054347826086957,
+    "predicted_rate": 0.028019779299072824,
+    "n": 368,
+    "events": 129,
+    "log_loss": 1.266987680161389,
+    "log_loss_null": 1.623771345611125,
+    "brier": 0.3314064655806384,
+    "brier_null": 0.34369041246742904,
+    "skill_logloss": 0.21972531194991385
+   },
+   {
+    "held_out_town": "Kathmandu",
+    "theta_g": 1.399,
+    "beta": 0.0,
+    "median_pga_g": 0.423,
+    "observed_rate": 0.2503419972640219,
+    "predicted_rate": 0.0016648313265796527,
+    "n": 731,
+    "events": 183,
+    "log_loss": 1.6182636085794064,
+    "log_loss_null": 1.2028958640660963,
+    "brier": 0.24953863891391634,
+    "brier_null": 0.2462077555366445,
+    "skill_logloss": -0.345306486555919
+   },
+   {
+    "held_out_town": "Pokhara",
+    "theta_g": 3.119,
+    "beta": 0.843,
+    "median_pga_g": 0.245,
+    "observed_rate": 0.0005491865174709961,
+    "predicted_rate": 0.005489873689672966,
+    "n": 14567,
+    "events": 8,
+    "log_loss": 0.008418767129344688,
+    "log_loss_null": 0.0257462907514698,
+    "brier": 0.000574380528445444,
+    "brier_null": 0.0010719115485562187,
+    "skill_logloss": 0.6730104848651226
+   }
+  ],
+  "calibration": [
+   {
+    "predicted_range": "0.0001-0.001",
+    "n": 63,
+    "predicted": 0.0009338052325237555,
+    "observed": 0.3492063492063492
+   },
+   {
+    "predicted_range": "0.001-0.01",
+    "n": 15235,
+    "predicted": 0.005325182278145509,
+    "observed": 0.011092878240892681
+   },
+   {
+    "predicted_range": "0.01-0.05",
+    "n": 550,
+    "predicted": 0.027996449698448812,
+    "observed": 0.4527272727272727
+   },
+   {
+    "predicted_range": "0.05-0.2",
+    "n": 18082,
+    "predicted": 0.13152297145697506,
+    "observed": 0.0003318217011392545
+   }
+  ],
+  "pooled": {
+   "log_loss": 0.1404521993678353,
+   "log_loss_null": 0.07000540129340718,
+   "brier": 0.02201914580653496,
+   "brier_null": 0.012972140057393602,
+   "skill_logloss": -1.0063051817840587,
+   "n": 33930,
+   "events": 446
+  }
+ }
+}

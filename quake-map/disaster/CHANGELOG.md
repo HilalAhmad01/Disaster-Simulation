@@ -92,3 +92,11 @@ curves are still the v1 placeholders until Phase 3.
 
 ### Documentation
 - README rewritten to match reality (placeholder / unverified status table); docs/data_sources.md; decision D1 applied (root README is a pointer); D2 applied (set_precision).
+
+### 1.5, 6.1 and Nepal hold-out (follow-up)
+- **6.1 vector tiles done** (docs/tiles.md): tippecanoe built from source, static PMTiles per area, per-run attributes as arrays in the style expression (string `slice` was 10x
+  slower). Pixel difference vs GeoJSON <= 1.7% after a 1-pixel edge tolerance; first 3D view 5.5 MB -> ~0.1 MB.
+- **1.5 ML storeys done** (docs/ml_attributes.md): a model trained on mapped floor labels passed the plan's test (9/9 cities) but over-predicted storeys on ordinary buildings
+  (3.0 vs 2.2), so a satellite-supervised model (learns from usable Google heights, footprint + context features) was shipped instead (unbiased, 8/9 cities, +0.064 log-loss).
+  `exposure.METHOD_VERSION` 4; baseline change: damage counts < 1%, people at risk +2.7%, baseline-box night population 527k -> 541k (GHS-POP 500k).
+- **Held-out Nepal**: the survey stays unobtainable; a leave-one-town-out test on EMS gradings of 6 towns shows no transferable skill (docs/validation.md).

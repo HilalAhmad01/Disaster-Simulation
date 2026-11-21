@@ -102,7 +102,7 @@ const TYPE={URM:'Masonry (unreinforced)',RC_LOW:'Concrete frame, low-rise',RC_MI
 const USE={residential:'Residential',office:'Office / commercial / civic',retail:'Retail',hotel:'Hotel',education:'School / college',medical:'Medical',industrial:'Factory / industrial',warehouse:'Warehouse / storage',religious:'Religious',entertainment:'Entertainment / sports',outbuilding:'Shed / outbuilding',large:'Large building, use unknown'};
 function optNum(m){const o={};for(const [k,id] of Object.entries(m)){const v=$(id).value;if(v!==''&&!isNaN(+v))o[k]=+v}return o}
 const pct=v=>Math.round(v*100)+'%';
-const SRC={label:'from map data',label_height:'from mapped height',google:'measured from satellite heights',guess:'estimated',guess_unstable:'estimated'};
+const SRC={label:'from map data',label_height:'from mapped height',google:'measured from satellite heights',guess:'estimated',guess_unstable:'estimated',satellite_model:'modelled from footprint and surroundings'};
 const TOD={night:'night',day:'daytime',commute:'evening commute'};
 const TYPE_SHORT={URM:'masonry',RC_LOW:'concrete frame, low-rise',RC_MID:'concrete frame, mid-rise'};
 function typeLine(p){

@@ -1,38 +1,38 @@
 {
  "area": {
   "buildings": 32400,
-  "exposure_version": "3",
+  "exposure_version": "4",
   "release": "2026-11-18.0"
  },
- "p_collapse_mean": 0.06244,
+ "p_collapse_mean": 0.06211,
  "p_collapse_pct": {
   "1": 0.039,
   "10": 0.056,
-  "50": 0.068,
+  "50": 0.066,
   "90": 0.068,
   "99": 0.068
  },
- "p_extensive_mean": 0.23321,
+ "p_extensive_mean": 0.23249,
  "p_extensive_pct": {
   "1": 0.164,
   "10": 0.216,
-  "50": 0.249,
+  "50": 0.243,
   "90": 0.249,
   "99": 0.249
  },
- "p_moderate_mean": 0.5447,
+ "p_moderate_mean": 0.54388,
  "p_moderate_pct": {
   "1": 0.447,
   "10": 0.52,
-  "50": 0.565,
+  "50": 0.558,
   "90": 0.566,
   "99": 0.566
  },
- "p_slight_mean": 0.83724,
+ "p_slight_mean": 0.83705,
  "p_slight_pct": {
   "1": 0.78,
   "10": 0.822,
-  "50": 0.848,
+  "50": 0.846,
   "90": 0.848,
   "99": 0.849
  },
@@ -54,17 +54,17 @@
   "buildings": 32400,
   "casualties": {
    "caveat": "UNVERIFIED parameters, written from memory; replace with the values named in each field's source before relying on casualty numbers.",
-   "deaths": 442,
-   "injury_1": 4367,
-   "injury_2": 1266,
-   "injury_3": 223,
-   "pager_deaths": 115,
+   "deaths": 451,
+   "injury_1": 4465,
+   "injury_2": 1292,
+   "injury_3": 227,
+   "pager_deaths": 118,
    "pager_disagreement": false,
-   "ratio_to_pager": 3.86,
+   "ratio_to_pager": 3.83,
    "verified": false
   },
   "distance_method": "ps2ff (strike unknown)",
-  "expected_collapses": 2017,
+  "expected_collapses": 2008,
   "ghs_pop_total": 499865,
   "gm_models": [
    "BA08",
@@ -72,7 +72,7 @@
   ],
   "gm_region": "crustal",
   "hazard": "earthquake",
-  "heavy": 32063,
+  "heavy": 32062,
   "height_source": "Google Open Buildings 2.5D Temporal",
   "max_mmi": 7.3,
   "max_pga": 0.264,
@@ -87,8 +87,8 @@
     7.3
    ]
   ],
-  "people_at_risk": 115209,
-  "people_total": 526886,
+  "people_at_risk": 118064,
+  "people_total": 541279,
   "population_source": "GHS-POP",
   "severe": 0,
   "soil": "flat 250 m/s (no soil map found)",

@@ -1,7 +1,7 @@
 """Turn raw building footprints into an exposure table: use, storeys, construction type, people."""
 import numpy as np, pandas as pd
 
-METHOD_VERSION = "3"    # bump whenever the exposure method changes; cached areas are then rebuilt from raw footprints
+METHOD_VERSION = "4"    # bump whenever the exposure method changes; cached areas are then rebuilt from raw footprints
 
 LABEL = {}
 def _add(cat, *names):
@@ -59,6 +59,10 @@ def _levels(b, area, use, apt, h=None, spread=None, storey_m=None):
     src = src.mask(lab.notna(), "label")
     return levels.clip(1, 40).round(), src
 
+def A_storey_bin(levels):
+    from priors import storeys_bin
+    return storeys_bin(levels)
+
 def attributes(b, area, heights=None, storey_m=None, mix=None):
     """b: DataFrame with default index (optional columns class/building/subtype/height/num_floors); area: footprint m2.
     heights: optional DataFrame (h_google, h_spread) aligned with b. Returns (use, levels, btype, occupants) as in v1;
@@ -66,9 +70,12 @@ def attributes(b, area, heights=None, storey_m=None, mix=None):
     d = attributes_full(b, area, heights, storey_m, mix)
     return d["use"], d["levels"], d["btype"], d["capacity"]
 
-def attributes_full(b, area, heights=None, storey_m=None, mix=None):
+def attributes_full(b, area, heights=None, storey_m=None, mix=None, geoms=None, utm=None, data_dir=None):
     """All per-building attributes as a dict of Series/arrays: use, levels, levels_src, p (n x 3 type probabilities),
-    btype (most likely type), capacity (people at typical occupancy)."""
+    btype (most likely type), capacity (people at typical occupancy).
+    geoms (EPSG:4326 footprints) enables the satellite-supervised storey model (attrs_ml.py): only for buildings whose storeys would
+    otherwise be guesses, and only where Google heights exist (the product's coverage region). Labelled and satellite-measured storeys are
+    never touched."""
     from priors import type_probs, TYPES
     use = pd.Series(np.nan, index=b.index, dtype=object)
     for c in [c for c in ("class", "building", "subtype") if c in b]:
@@ -82,7 +89,20 @@ def attributes_full(b, area, heights=None, storey_m=None, mix=None):
     sp = heights["h_spread"].to_numpy() if heights is not None else None
     levels, src = _levels(b, area, use, apt, h, sp, storey_m)
     engineered = use.isin(ENGINEERED).to_numpy() | (area >= 1500)
-    p = type_probs(levels.to_numpy(), engineered, mix)
+    bin_probs = None
+    if geoms is not None and heights is not None:
+        import attrs_ml
+        sel = np.flatnonzero(src.isin(["guess", "guess_unstable"]).to_numpy())
+        P = attrs_ml.predict_storeys(geoms, sel, utm, data_dir) if len(sel) else None
+        if P is not None:
+            rep = np.array([1, 2, 3, 6, 10])                       # integer storeys for the most likely bin
+            lv = levels.to_numpy().copy()
+            lv[sel] = np.where(use.isin(SINGLE_STOREY).to_numpy()[sel], np.minimum(rep[P.argmax(1)], 2), rep[P.argmax(1)])
+            levels = pd.Series(lv, index=levels.index)
+            src = src.copy(); src.iloc[sel] = "satellite_model"
+            bin_probs = np.eye(5)[A_storey_bin(lv)]
+            bin_probs[sel] = P
+    p = type_probs(levels.to_numpy(), engineered, mix, bin_probs=bin_probs)
     btype = np.array(TYPES)[p.argmax(axis=1)]
     capacity = (area * levels * 0.8 / use.map(DENS)).round().clip(0, 4000)
     return {"use": use, "levels": levels, "levels_src": src, "p": p, "btype": btype, "capacity": capacity}
@@ -99,7 +119,7 @@ def make_exposure(b, height_dir=None, pop_raster=None, data_dir=None, storey_m=N
     u = b.to_crs(utm)
     area = u.area.to_numpy()
     ht = H.building_heights(b.geometry.values, height_dir) if height_dir else None
-    d = attributes_full(b, area, ht, storey_m, priors.construction_mix(region, data_dir))
+    d = attributes_full(b, area, ht, storey_m, priors.construction_mix(region, data_dir), geoms=b.geometry.values, utm=utm, data_dir=data_dir)
     c = u.centroid
     x, y = c.x.to_numpy(), c.y.to_numpy()
     g = b[["geometry"]].copy()
@@ -127,7 +147,9 @@ def make_exposure(b, height_dir=None, pop_raster=None, data_dir=None, storey_m=N
     g["pop_factor"] = occ["factor"].astype("float32").to_numpy()
     src = g["levels_src"].value_counts()
     st["levels_src"] = {k: int(v) for k, v in src.items()}
+    st["levels_model_share"] = float(src.get("satellite_model", 0) / max(len(g), 1))
     st["levels_measured_share"] = float(src.reindex(["label", "label_height", "google"]).fillna(0).sum() / max(len(g), 1))
     st["height_source"] = "Google Open Buildings 2.5D Temporal" if ht is not None else "none (storeys are guesses except labelled buildings)"
+    st["storey_model"] = "satellite-supervised gradient boosting (footprint + neighbourhood) for buildings the height product cannot resolve" if st["levels_model_share"] > 0 else None
     g.attrs["stats"] = st
     return g

@@ -74,7 +74,19 @@ intervals. The nodal plane that follows the USGS rupture polygon is used for our
   (a factor of ~2.8 low, near the fault). A rectangular Wells & Coppersmith rupture is shorter than the real ~300 km rupture, which
   is the likely cause of the largest gap.
 * Absolute counts are deliberately not compared (grading = visible damage, not engineering damage states).
-* Not done: held-out Nepal districts (no survey data), Kathmandu/Turkiye replays with calibrated curves.
+* Not done: Kathmandu/Turkiye replays with calibrated curves.
+
+### Held-out Nepal towns (the closest real analogue to the plan's held-out districts)
+The household survey is unobtainable (the NSO server times out; the Kaggle mirror needs a login), so `tools/holdout_nepal_ems.py`
+fits one lognormal curve to EMSR125 gradings of 6 Nepalese towns (about 34,000 buildings, 449 destroyed) joined to the Gorkha ShakeMap
+and scores it on each held-out town (full tables: [validation_nepal_heldout.md](validation_nepal_heldout.md)).
+**Result: no transferable skill.** Pooled held-out log-loss 0.140 against 0.070 for a constant base rate (skill -100%); the curve beats
+the constant in Bidur, Chilime and Pokhara but loses badly in Bharatpur and Kathmandu. Cause: Bharatpur and Kathmandu have the same
+median ShakeMap PGA (0.43 g) but 0.03% vs 25% of their graded buildings are destroyed. The gradings are not a random sample (Bharatpur's
+18,000 graded buildings are essentially the whole town, Kathmandu's 731 were picked where damage was seen), so the observed rates
+mostly measure where mappers looked. The all-town curve (median 2.3 g) is therefore meaningless as a fragility curve. These
+gradings can test ranking within a town (above) but cannot calibrate fragility; the household survey (every damaged house, with
+building type and ward) remains necessary.
 
 ## Not yet validated
 Fragility curves are still the v1 placeholders (Phase 3 replaces them), so absolute damage and casualty numbers carry that

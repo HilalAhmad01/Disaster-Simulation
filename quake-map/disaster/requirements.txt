@@ -17,3 +17,8 @@ matplotlib
 tabulate
 pytest
 playwright   # only for browser smoke tests, optional
+lightgbm
+scikit-learn
+pmtiles
+mapbox-vector-tile
+pillow

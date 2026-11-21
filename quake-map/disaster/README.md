@@ -56,7 +56,7 @@ Colour classes: blue = little or none, green = light, yellow = moderate, red = s
 | Distance, rupture | Wells & Coppersmith 1994 rectangle (shorter than the biggest real ruptures); ps2ff table from USGS (public domain). Depth acts through Ztor: the distance given to the ground-motion model is sqrt(Rjb² + Ztor²) |
 | Model weights | BA08 0.65 / BSSA14 0.35 from Selvan & Sinha (2024) log-likelihood scores; **Sharma 2009's 0.2 near the source is a judgement** |
 | Soil | USGS Vs30 mosaic if you install it (`tools/get_vs30.py`); otherwise a flat 250 m/s, stated in the summary |
-| Storeys | Measured for **67% of Noida** (82% in the 6 x 5 km baseline box): 30% of footprints read < 2 m in the height product (small, low buildings) and fall back to a guess. Agreement with labelled buildings: 69% within one storey (target 70% missed), bias -0.45 storeys at 2.8 m/storey |
+| Storeys | Measured for **67% of Noida** (82% in the 6 x 5 km baseline box). The 30% of footprints the height product cannot resolve (< 2 m: small, low buildings) now get a **satellite-supervised model** (unbiased on usable-height buildings, beats the old area rule in 8/9 held-out cities; docs/ml_attributes.md) - an extrapolation, not independently verified for those buildings, and reported as `modelled`, not measured. Agreement with labelled buildings: 69% within one storey (target 70% missed), bias -0.45 storeys at 2.8 m/storey |
 | Construction types | Probabilities from a documented rule; the **census shares are an assumption**, not looked up |
 | People | Scaled to GHS-POP (a modelled estimate; Noida night total within 2.2% of it; v1 gave ~1.9x). Time-of-day shares are approximate and **unverified** against Hazus |
 | **Fragility curves** | **UNCALIBRATED v1 placeholders.** The calibration code is built and tested on synthetic data, but the Nepal survey could not be obtained, so no curve was fitted (docs/calibration/README.md) |
@@ -81,10 +81,11 @@ Occupancy by use (m² per person): residential 15, office 12, retail 10, hotel 3
 | Phase 3 | Fragility fitting chain (grouped likelihood, shaking-uncertainty, ward bootstrap, held-out scoring) tested on synthetic data; **not run on real survey data (unavailable)**. Real replays of Türkiye 2023 and Nepal 2015 against Copernicus EMS grading |
 | Phase 4 | Seeded Monte Carlo (26 s for 483k buildings), correlated within-event field, ranges, worst-case priorities |
 | Phase 5 | Facilities, roads + debris blockage, access, routes, dispatch, casualties |
-| Phase 6 | PDF/CSV report, confidence panel, saved-area switcher. **Vector tiles (6.1) not implemented** (see CHANGELOG) |
+| Phase 6 | PDF/CSV report, confidence panel, saved-area switcher, static vector tiles (6.1) |
 | Phase 7 | Hazard plug-in interface; earthquake moved with identical numbers; flood and cyclone modules |
 | Phase 8 | Wave animation with warning times, dark theme, shake effect |
-| Not done | 1.5 ML building attributes (optional; only if storeys/use stay weak), 3.5 GEM/HAZUS comparison, held-out Nepal districts, 6.1 vector tiles, a real calibration. See CHANGELOG and MASTER_PLAN.md section 13 |
+| Follow-up | 6.1 vector tiles (static PMTiles via tippecanoe; ~50x less data per 3D view, docs/tiles.md); 1.5 ML storeys (a label-trained model passed the plan's test but was biased, so a satellite-supervised one shipped; docs/ml_attributes.md); held-out Nepal towns on EMS gradings (no transferable skill; the real survey is unobtainable) |
+| Not done | 3.5 GEM/HAZUS comparison and a real fragility calibration (need the Nepal survey and Hazus/GEM tables), true district-level held-out validation. See CHANGELOG and MASTER_PLAN.md section 13 |
 
 ---
 
@@ -102,7 +103,8 @@ disaster/
   casualty.py  confidence.py  report.py                         casualties, trust panel, PDF/CSV
   overture.py  places.py  build_exposure.py
   priors/                            small tables shipped with the code (fragility, casualty, census, occupancy, ps2ff ...)
-  tools/                             data downloads, baselines, verification, validation, calibration
+  tiles.py  attrs_ml.py              vector tiles; storey model (priors/models/)
+  tools/                             data downloads, baselines, verification, validation, calibration, ML training
   tests/  docs/  index.html  CHANGELOG.md
   data/                              your data (not in git): areas/, rasters/, roads/, facilities/, validation/ ...
 ```
@@ -135,6 +137,7 @@ A fresh clone starts with no data and says so. Click **Load a new area**, drag a
 | Measured storeys | `python tools/get_google_heights.py --area <id> [--method overview]` | public Google bucket, no account; `nearest` (default) is most faithful but ~100 s per year per 30 km², `overview` ~16x faster, measured difference in docs/validation.md |
 | Population | `python tools/get_ghs_pop.py --area <id>` | JRC GHSL bucket, no account |
 | Soil | `python tools/get_vs30.py /path/to/vs30_mosaic_median_30c.tif` | USGS ScienceBase blocks scripted downloads: download in a browser from https://doi.org/10.5066/P1NV6UNM |
+| Vector tiles (3D/2D speed) | `sh tools/install_tippecanoe.sh` | builds tippecanoe into `.tools/` (needs g++, make, zlib, sqlite headers; no root); tiles are then cut automatically per area, otherwise GeoJSON is used |
 | Region pre-download | `python tools/prefetch_region.py --bbox w,s,e,n --name delhi-ncr` | later boxes inside it are cut with no network |
 
 Area ids are in the saved-area list (`GET /api/areas`). After adding a raster the area's exposure rebuilds automatically on next load (about 70 s for 483k buildings).
@@ -222,9 +225,8 @@ Not scriptable and needing manual steps: the USGS Vs30 mosaic (ScienceBase bot c
 
 1. **Calibrate the fragility curves** (the most important fix): get the Nepal 2015 survey, then `tools/calibrate_fragility.py --apply`; compare with GEM/HAZUS; verify the casualty tables against the Hazus manual.
 2. **Better shaking for the largest events:** use a supplied rupture polygon (e.g. USGS) instead of a rectangle; the replays show a 2-3x under-estimate near the long Türkiye rupture.
-3. **More measured storeys:** small low buildings are not resolved by the height product; an ML model trained on several cities' labels (1.5) was not built.
-4. **Vector tiles for 3D (6.1)** with a tippecanoe/PMTiles toolchain and a feature-state design that beats today's lossless GeoJSON path.
-5. Calibrate debris blocking against the Haiti/Tokyo/Amatrice models; real depth-damage and wind-fragility curves; casualty and Monte Carlo for flood and cyclone.
+3. **Verify the storey model for small buildings** with ground truth (the satellite cannot resolve them), and add road-distance features.
+4. Calibrate debris blocking against the Haiti/Tokyo/Amatrice models; real depth-damage and wind-fragility curves; casualty and Monte Carlo for flood and cyclone.
 
 ---
 

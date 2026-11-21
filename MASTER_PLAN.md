@@ -532,7 +532,7 @@ Phase 1
 - [~] 1.2 construction-type probabilities + mixed damage curves + per-type beta. **Census shares are an assumed default, not looked up**
 - [~] 1.3 GHS-POP matching + day/night occupancy + time-of-day input. Night total within 2.2% of GHS-POP. **Time-of-day shares unverified against Hazus**
 - [~] 1.4 exposure checks + storey-height calibration (2.8 m). **+/-1 storey agreement 68.8% (target 70% missed)**; no imagery spot-check
-- [ ] 1.5 (optional) ML attributes: not built (storeys weak but optional; recorded as roadmap item)
+- [~] 1.5 ML attributes: **built and shipped as a satellite-supervised storey model** (a label-trained model passed the plan's test but was biased); extrapolates below the training height range, no construction-material labels, no road features. docs/ml_attributes.md
 
 Phase 2
 - [x] 2.1 BA08 matches OpenQuake (machine precision) + standard deviations stored. (Found and fixed a v1 normal/reverse offset swap)
@@ -546,7 +546,7 @@ Phase 3
 - [x] 3.3 class and damage-state mapping documented (column names to verify against the real data dictionary)
 - [~] 3.4 maximum-likelihood fit with grouping, shaking-uncertainty handling, bootstrap CIs, plots: built and recovers known curves; **not run on real data**
 - [ ] 3.5 GEM/HAZUS comparison + final FRAG/BETA with provenance: **not done** (no data; curves stay UNCALIBRATED placeholders; the decision rule and the loader are built)
-- [~] 3.6 validation: Turkiye 2023 (EMSR648) and Kathmandu (EMSR125) replayed with real data, **weak/inconclusive skill reported**; held-out Nepal districts not possible
+- [~] 3.6 validation: Turkiye 2023 and Kathmandu replayed with real data (**weak/inconclusive**); held-out: the household survey is unobtainable, so a leave-one-town-out test on EMS gradings of 6 Nepalese towns was run instead (**no transferable skill**)
 
 Phase 4
 - [x] uncertainty.py Monte Carlo (between-event, correlated within-event, models, fragility, type, occupancy). Fragility and occupancy spreads are assumptions
@@ -560,7 +560,7 @@ Phase 5
 - [~] 5.5 casualties + PAGER sanity check. **Rates and PAGER parameters are unverified (Hazus manual unreachable)**
 
 Phase 6
-- [ ] 6.1 vector tiles with pixel-diff check: **not implemented** (tippecanoe unavailable; per-run attributes cannot join static tiles without feature-state; would not beat the current lossless path)
+- [x] 6.1 vector tiles with pixel-diff check (tippecanoe built from source; <= 1.7% pixel difference after edge tolerance; docs/tiles.md)
 - [x] 6.2 multi-city switcher (registry + UI)
 - [x] 6.3 responder report export (PDF via WeasyPrint, CSV)
 - [x] 6.4 confidence display

@@ -266,3 +266,42 @@ def holdout_score(fit_res, test_groups, train_groups):
     brier0 = float(np.average((mix[2:].sum() - obs_ext) ** 2, weights=n.sum(1)))
     return {"log_loss": float(ll), "log_loss_null": float(ll0), "skill": float(1 - ll / ll0), "brier": brier_, "brier_null": brier0,
             "n_buildings": int(n.sum())}
+
+# ---------------- binary outcome (e.g. destroyed vs not) with shaking uncertainty ----------------
+def fit_binary(x, s, n_pos, n_tot):
+    """One lognormal curve P(event | x) = Phi((x - ln theta) / sqrt(beta^2 + s^2)) fitted by maximum likelihood to grouped binary
+    counts (x = ln PGA of the group, s = shaking spread). Returns dict(theta, beta, nll, success)."""
+    x, s, k, n = (np.asarray(v, float) for v in (x, s, n_pos, n_tot))
+    def nll(p):
+        pr = np.clip(ndtr((x - p[0]) / np.sqrt(np.exp(2 * p[1]) + s ** 2)), 1e-12, 1 - 1e-12)
+        return -float((k * np.log(pr) + (n - k) * np.log1p(-pr)).sum())
+    best = None
+    for t0, b0 in ((np.log(0.5), np.log(0.5)), (np.log(1.0), np.log(0.8)), (np.log(0.3), np.log(0.4))):
+        r = minimize(nll, [t0, b0], method="Nelder-Mead", options={"xatol": 1e-6, "fatol": 1e-8, "maxiter": 4000})
+        if best is None or r.fun < best.fun:
+            best = r
+    return {"theta": float(np.exp(best.x[0])), "beta": float(np.exp(best.x[1])), "nll": float(best.fun), "success": bool(best.success)}
+
+def predict_binary(fit, x, s):
+    return ndtr((np.asarray(x, float) - np.log(fit["theta"])) / np.sqrt(fit["beta"] ** 2 + np.asarray(s, float) ** 2))
+
+def score_binary(p, k, n, base_rate):
+    """Log-loss and Brier score (per observation) of probabilities p for grouped counts, and the same for a constant base rate."""
+    p, k, n = (np.asarray(v, float) for v in (p, k, n))
+    def ll(q):
+        q = np.clip(q, 1e-9, 1 - 1e-9)
+        return -float((k * np.log(q) + (n - k) * np.log1p(-q)).sum() / n.sum())
+    def br(q):
+        return float((k * (1 - q) ** 2 + (n - k) * q ** 2).sum() / n.sum())
+    return {"log_loss": ll(p), "log_loss_null": ll(np.full_like(p, base_rate)), "brier": br(p), "brier_null": br(np.full_like(p, base_rate)),
+            "skill_logloss": 1 - ll(p) / ll(np.full_like(p, base_rate)), "n": int(n.sum()), "events": int(k.sum())}
+
+def calibration_bins(p, k, n, edges=(0, 1e-4, 1e-3, 1e-2, 0.05, 0.2, 0.5, 1.0)):
+    """Predicted vs observed event rate in probability bins (grouped counts)."""
+    p, k, n = (np.asarray(v, float) for v in (p, k, n))
+    rows = []
+    for a, b in zip(edges[:-1], edges[1:]):
+        m = (p >= a) & (p < b if b < 1 else p <= b)
+        if n[m].sum() > 0:
+            rows.append({"predicted_range": f"{a:g}-{b:g}", "n": int(n[m].sum()), "predicted": float((p[m] * n[m]).sum() / n[m].sum()), "observed": float(k[m].sum() / n[m].sum())})
+    return rows

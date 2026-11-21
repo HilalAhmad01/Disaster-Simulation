@@ -18,8 +18,10 @@ def build(model, area_meta=None, data_dir=None):
     st = model.stats if model is not None else {}
     if "levels_measured_share" in st:
         sh = st["levels_measured_share"]
+        ms = st.get("levels_model_share", 0)
+        mod = f"{ms:.0%} come from a footprint-and-surroundings model (extrapolated, not verified); " if ms > 0 else ""
         items.append({"topic": "Storeys", "level": "good" if sh >= 0.8 else "caution" if sh >= 0.5 else "poor",
-                      "text": f"{sh:.0%} of buildings have measured storeys ({st.get('height_source')}); the rest are estimated. Satellite storeys agree with mapped labels within one storey for about 69% of labelled Noida buildings."})
+                      "text": f"{sh:.0%} of buildings have measured storeys ({st.get('height_source')}); {mod}the rest are guesses. Satellite storeys agree with mapped labels within one storey for about 69% of labelled Noida buildings."})
     if "pop_src" in st:
         ok = st["pop_src"] == "GHS-POP"
         items.append({"topic": "People", "level": "caution" if ok else "poor", "text": ("Scaled to GHS-POP (a modelled estimate)" if ok else "Typical-occupancy guess without a population raster (probably far too high)") + "."})

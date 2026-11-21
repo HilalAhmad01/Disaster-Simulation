@@ -31,12 +31,13 @@ def construction_mix(region="IN-urban", data_dir=None):
     sub = sub.set_index("storeys_bin").loc[list(BINS)]
     return sub[["p_" + t for t in TYPES]].to_numpy(float)
 
-def type_probs(levels, engineered, mix=None, engineered_floor=0.8):
+def type_probs(levels, engineered, mix=None, engineered_floor=0.8, bin_probs=None):
     """Probability of each construction type per building: the storey-bin prior, then the engineered rule
     (industrial/office/retail/hotel/education/medical uses or footprints >= 1500 m2 with up to 4 storeys are RC_LOW
-    with probability at least `engineered_floor`; the rest is shared in proportion to the prior)."""
+    with probability at least `engineered_floor`; the rest is shared in proportion to the prior). bin_probs (n, 5), if given, replaces the
+    hard storey bin of `levels` by a probability over bins (rows sum to 1)."""
     mix = construction_mix() if mix is None else mix
-    p = mix[storeys_bin(levels)].copy()
+    p = mix[storeys_bin(levels)].copy() if bin_probs is None else np.asarray(bin_probs, float) @ mix       # soft: mix over the storey-bin probabilities
     eng = np.asarray(engineered, bool) & (np.asarray(levels, float) <= 4)
     if eng.any():
         lo = p[eng, 1]

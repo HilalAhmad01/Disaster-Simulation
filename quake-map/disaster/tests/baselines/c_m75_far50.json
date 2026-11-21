@@ -1,40 +1,40 @@
 {
  "area": {
   "buildings": 32400,
-  "exposure_version": "3",
+  "exposure_version": "4",
   "release": "2026-11-18.0"
  },
- "p_collapse_mean": 0.0242,
+ "p_collapse_mean": 0.02406,
  "p_collapse_pct": {
   "1": 0.013,
-  "10": 0.019,
+  "10": 0.02,
   "50": 0.024,
   "90": 0.029,
   "99": 0.03
  },
- "p_extensive_mean": 0.12403,
+ "p_extensive_mean": 0.1235,
  "p_extensive_pct": {
-  "1": 0.079,
-  "10": 0.105,
-  "50": 0.123,
-  "90": 0.142,
-  "99": 0.146
+  "1": 0.078,
+  "10": 0.106,
+  "50": 0.122,
+  "90": 0.141,
+  "99": 0.145
  },
- "p_moderate_mean": 0.37911,
+ "p_moderate_mean": 0.3782,
  "p_moderate_pct": {
-  "1": 0.298,
-  "10": 0.341,
-  "50": 0.378,
-  "90": 0.414,
-  "99": 0.42
+  "1": 0.297,
+  "10": 0.342,
+  "50": 0.377,
+  "90": 0.412,
+  "99": 0.419
  },
- "p_slight_mean": 0.71209,
+ "p_slight_mean": 0.71169,
  "p_slight_pct": {
   "1": 0.648,
-  "10": 0.682,
+  "10": 0.684,
   "50": 0.711,
-  "90": 0.74,
-  "99": 0.745
+  "90": 0.739,
+  "99": 0.744
  },
  "pga_pct": {
   "1": 0.19,
@@ -54,17 +54,17 @@
   "buildings": 32400,
   "casualties": {
    "caveat": "UNVERIFIED parameters, written from memory; replace with the values named in each field's source before relying on casualty numbers.",
-   "deaths": 170,
-   "injury_1": 2065,
-   "injury_2": 523,
-   "injury_3": 86,
-   "pager_deaths": 30,
+   "deaths": 173,
+   "injury_1": 2106,
+   "injury_2": 532,
+   "injury_3": 87,
+   "pager_deaths": 31,
    "pager_disagreement": true,
-   "ratio_to_pager": 5.68,
+   "ratio_to_pager": 5.63,
    "verified": false
   },
   "distance_method": "ps2ff (strike unknown)",
-  "expected_collapses": 784,
+  "expected_collapses": 780,
   "ghs_pop_total": 499865,
   "gm_models": [
    "BA08",
@@ -87,8 +87,8 @@
     6.9
    ]
   ],
-  "people_at_risk": 60130,
-  "people_total": 526886,
+  "people_at_risk": 61384,
+  "people_total": 541279,
   "population_source": "GHS-POP",
   "severe": 0,
   "soil": "flat 250 m/s (no soil map found)",
