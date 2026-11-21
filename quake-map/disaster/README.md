@@ -154,7 +154,7 @@ Area ids are in the saved-area list (`GET /api/areas`). After adding a raster th
 ### 6.5 Tests
 
 ```bash
-pytest -q                                   # ~130 tests, no network needed
+pytest -q                                   # about 150 tests, no network needed
 python tests/test_regression.py --update    # regenerate the synthetic baseline (explain every change in CHANGELOG)
 python tools/baseline.py --check            # real-data baselines (needs the downloaded baseline area)
 .venv-verify/bin/python -m pytest tests/test_gmpe_openquake.py    # OpenQuake comparison, separate environment
