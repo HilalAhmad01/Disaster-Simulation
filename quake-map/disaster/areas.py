@@ -54,24 +54,53 @@ class Registry:
             m["last_used"] = time.time()
             (self.path(aid) / "meta.json").write_text(json.dumps(m, indent=1))
 
-    def create(self, bbox, raw, release, aid=None, name=None):
+    def create(self, bbox, raw, release, aid=None, name=None, parent=None):
         """Store raw footprints (already limited to bbox), build the exposure, write meta. Returns the meta dict."""
         aid = aid or f"{_slug(name or 'area')}-{int(time.time())}"
         d = self.path(aid)
         d.mkdir(parents=True, exist_ok=True)
         raw = raw.reset_index(drop=True)
         raw.to_parquet(d / "raw.parquet")
-        return self._build(aid, list(map(float, bbox)), raw, release, name=name)
+        return self._build(aid, list(map(float, bbox)), raw, release, name=name, extra={"parent": parent} if parent else None)
+
+    def raster_inputs(self, aid):
+        """(height_dir, pop_raster, signature). Rasters are looked up for the area, then for its parents (a derived
+        area is cut from a parent that covers it, so the parent's rasters cover it too). signature changes when
+        a raster is added/replaced, which makes the stored exposure stale."""
+        import population
+        root = self.dir.parent / "rasters"
+        chain, seen = [], set()
+        while aid and aid not in seen:
+            seen.add(aid)
+            chain.append(aid)
+            aid = (self.meta(aid) or {}).get("parent")
+        height_dir = pop = None
+        for a in chain:
+            hd = root / "google_heights" / a
+            if height_dir is None and any(hd.glob("h*_*.tif")) if hd.exists() else False:
+                height_dir = hd
+            pp = population.raster_path(root / "ghs_pop" / a)
+            if pop is None and pp:
+                pop = pp
+        sig = [[p.name, p.stat().st_size, int(p.stat().st_mtime)] for p in sorted(height_dir.glob("h*_*.tif"))] if height_dir else []
+        sig += [[pop.name, pop.stat().st_size, int(pop.stat().st_mtime)]] if pop else []
+        return height_dir, pop, sig
 
     def _build(self, aid, bbox, raw, release, name=None, extra=None):
         d = self.path(aid)
-        g = exposure.make_exposure(raw)
-        g.to_parquet(d / "exposure.parquet")
         old = self.meta(aid) or {}
+        parent = (extra or {}).get("parent", old.get("parent"))
+        if parent and not old.get("parent"):
+            (d / "meta.json").write_text(json.dumps({**old, "id": aid, "parent": parent}))   # so raster lookup sees the parent
+        hd, pop, sig = self.raster_inputs(aid)
+        g = exposure.make_exposure(raw, height_dir=hd, pop_raster=pop, data_dir=self.dir.parent)
+        g.to_parquet(d / "exposure.parquet")
         m = {"id": aid, "name": name or old.get("name") or aid, "bbox": bbox, "release": release,
              "created": old.get("created", time.time()), "last_used": time.time(),
              "buildings": int(len(g)), "people": int(g["occupants"].sum()),
-             "exposure_version": exposure.METHOD_VERSION}
+             "exposure_version": exposure.METHOD_VERSION, "inputs": sig, "stats": g.attrs.get("stats", {})}
+        if parent:
+            m["parent"] = parent
         m.update(extra or {})
         (d / "meta.json").write_text(json.dumps(m, indent=1))
         return m
@@ -80,14 +109,15 @@ class Registry:
         """New area for `bbox` clipped (with Overture's own rule) from a cached parent's raw footprints. No network."""
         pm = self.meta(parent_id)
         raw = clip_to_bbox(gpd.read_parquet(self.path(parent_id) / "raw.parquet"), bbox)
-        return self.create(bbox, raw, pm["release"], name=name)
+        return self.create(bbox, raw, pm["release"], name=name, parent=parent_id)
 
     def load_exposure(self, aid):
         """Exposure GeoDataFrame of an area; rebuilt from raw if the method version changed since it was stored."""
         d, m = self.path(aid), self.meta(aid)
         if m is None:
             raise KeyError(aid)
-        if m.get("exposure_version") != exposure.METHOD_VERSION and (d / "raw.parquet").exists():
+        stale = m.get("exposure_version") != exposure.METHOD_VERSION or m.get("inputs", []) != self.raster_inputs(aid)[2]
+        if stale and (d / "raw.parquet").exists():
             self._build(aid, m["bbox"], gpd.read_parquet(d / "raw.parquet"), m.get("release"), name=m.get("name"))
         return gpd.read_parquet(d / "exposure.parquet")
 

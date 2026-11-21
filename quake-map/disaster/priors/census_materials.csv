@@ -1,0 +1,2 @@
+region_id,urban,wall_burnt_brick_or_stone,roof_concrete,source
+IN-urban,1,0.75,0.60,"ASSUMED DEFAULT for urban India (approximate national urban shares of Census 2011 HL-03: burnt-brick/stone walls, concrete roofs). NOT looked up from the census tables - replace by running tools/build_construction_priors.py --census <your csv>. VERIFY."

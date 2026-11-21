@@ -136,3 +136,16 @@ def test_overture_reads_only_needed_columns():
     assert asked["cols"] == ["geometry", "class", "height"] and set(t.column_names) <= set(KEEP)
     assert _read_columns(types.SimpleNamespace(_prepare_query=lambda kind, bbox: None), (0, 0, 1, 1)) is None
     assert _read_columns(types.SimpleNamespace(), (0, 0, 1, 1)) is False      # old package: caller falls back
+
+def test_vs30_override_wins_where_it_has_values(tmp_path, monkeypatch):
+    rasterio = pytest.importorskip("rasterio")
+    from rasterio.transform import from_origin
+    from soil import vs30_at, FLAT
+    arr = np.zeros((10, 10), "float32"); arr[:, 5:] = 600.0            # right half has data (lon >= 77.45)
+    p = tmp_path / "ov.tif"
+    with rasterio.open(p, "w", driver="GTiff", height=10, width=10, count=1, dtype="float32", crs="EPSG:4326",
+                       transform=from_origin(77.40, 28.60, 0.01, 0.01), nodata=0) as ds:
+        ds.write(arr, 1)
+    monkeypatch.setenv("VS30_OVERRIDE_TIF", str(p)); monkeypatch.setenv("VS30_TIF", str(tmp_path / "none.tif"))
+    v, src = vs30_at(np.array([28.55, 28.55, 28.2]), np.array([77.42, 77.47, 77.47]))
+    assert list(v) == [FLAT, 600.0, FLAT] and "override" in src          # outside the raster and in its no-data half: mosaic/flat

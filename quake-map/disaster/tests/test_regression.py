@@ -10,6 +10,8 @@ SAVED = pathlib.Path(__file__).resolve().parent / "baselines" / "synthetic.json"
 SCEN = [dict(lat=28.575, lon=77.33, depth_km=15, mag=6.5), dict(lat=28.575, lon=77.33, depth_km=10, mag=7.5),
         dict(lat=29.02, lon=77.33, depth_km=10, mag=7.5)]
 
+KEYS = ["buildings", "severe", "heavy", "people_at_risk", "max_pga", "max_mmi", "vs30_median", "expected_collapses"]
+
 def compute():
     import os; os.environ["VS30_TIF"] = "/nonexistent.tif"
     from simulate import Model
@@ -18,7 +20,7 @@ def compute():
     for s in SCEN:
         r = m.run(s["lat"], s["lon"], s["depth_km"], s["mag"])
         L = m.last
-        out.append({"summary": {k: v for k, v in r["summary"].items() if k != "soil"},
+        out.append({"summary": {k: r["summary"][k] for k in KEYS},
                     "pga_pct": np.percentile(L["pga"], [1, 50, 99]).round(5).tolist(),
                     "p_ext_mean": round(float(L["p_extensive"].mean()), 5),
                     "p_col_mean": round(float(L["p_collapse"].mean()), 5)})

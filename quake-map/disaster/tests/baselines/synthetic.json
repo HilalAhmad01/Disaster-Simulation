@@ -1,57 +1,57 @@
 [
  {
-  "p_col_mean": 0.02289,
-  "p_ext_mean": 0.12179,
+  "p_col_mean": 0.06661,
+  "p_ext_mean": 0.24791,
   "pga_pct": [
-   0.191,
-   0.193,
-   0.194
+   0.264,
+   0.264,
+   0.264
   ],
   "summary": {
    "buildings": 1000,
-   "expected_collapses": 23,
-   "heavy": 477,
-   "max_mmi": 6.8,
-   "max_pga": 0.194,
-   "people_at_risk": 13106,
-   "severe": 0,
-   "vs30_median": 250
-  }
- },
- {
-  "p_col_mean": 0.08401,
-  "p_ext_mean": 0.28755,
-  "pga_pct": [
-   0.282,
-   0.286,
-   0.288
-  ],
-  "summary": {
-   "buildings": 1000,
-   "expected_collapses": 84,
+   "expected_collapses": 67,
    "heavy": 627,
-   "max_mmi": 7.5,
-   "max_pga": 0.288,
-   "people_at_risk": 33435,
+   "max_mmi": 7.3,
+   "max_pga": 0.264,
+   "people_at_risk": 28394,
    "severe": 0,
    "vs30_median": 250
   }
  },
  {
-  "p_col_mean": 0.00843,
-  "p_ext_mean": 0.06067,
+  "p_col_mean": 0.30207,
+  "p_ext_mean": 0.61125,
   "pga_pct": [
-   0.146,
-   0.15,
-   0.155
+   0.49299,
+   0.496,
+   0.497
   ],
   "summary": {
    "buildings": 1000,
-   "expected_collapses": 8,
-   "heavy": 0,
-   "max_mmi": 6.5,
-   "max_pga": 0.155,
-   "people_at_risk": 6230,
+   "expected_collapses": 302,
+   "heavy": 1000,
+   "max_mmi": 8.3,
+   "max_pga": 0.497,
+   "people_at_risk": 77928,
+   "severe": 627,
+   "vs30_median": 250
+  }
+ },
+ {
+  "p_col_mean": 0.02619,
+  "p_ext_mean": 0.13345,
+  "pga_pct": [
+   0.192,
+   0.2,
+   0.208
+  ],
+  "summary": {
+   "buildings": 1000,
+   "expected_collapses": 26,
+   "heavy": 477,
+   "max_mmi": 6.9,
+   "max_pga": 0.208,
+   "people_at_risk": 14483,
    "severe": 0,
    "vs30_median": 250
   }

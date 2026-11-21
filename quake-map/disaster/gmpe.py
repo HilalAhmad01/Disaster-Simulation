@@ -5,8 +5,13 @@ Beyond that range treat results as rough. Himalayan-arc events 200+ km away need
 """
 import numpy as np
 
-# BA08 PGA coefficients (unspecified mechanism, SS/RS/NS offsets)
-E = {"unspec": -0.53804, "ss": -0.50350, "rs": -0.75472, "ns": -0.50970}
+# BA08 PGA coefficients: e1 (unspecified), e2 (strike-slip), e3 (normal), e4 (reverse). Checked against OpenQuake
+# (tools/verify_gmpe.py). NOTE: v1.0 had the normal and reverse offsets swapped; unused by the app (it always uses
+# "unspec") but fixed here.
+E = {"unspec": -0.53804, "ss": -0.50350, "ns": -0.75472, "rs": -0.50970}
+# BA08 standard deviations of ln PGA (Table 8 / OpenQuake COEFFS): between-event tau, within-event phi, total sigma.
+# Used by the Monte Carlo ranges (Phase 4).
+TAU, PHI, SIGMA = 0.26, 0.502, 0.564
 E5, E6, E7, MH = 0.28805, -0.10164, 0.0, 6.75
 C1, C2, C3, H = -0.66050, 0.11970, -0.01151, 1.35
 MREF, RREF = 4.5, 1.0

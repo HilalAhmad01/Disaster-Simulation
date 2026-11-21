@@ -146,7 +146,8 @@ def create_app(data_dir=None):
     @app.post("/api/simulate")
     def simulate(q: Quake):
         m = st.need()
-        out = m.run(q.lat, q.lon, q.depth_km, q.magnitude)
+        out = m.run(q.lat, q.lon, q.depth_km, q.magnitude, time_of_day=q.time_of_day,
+                    strike=q.strike, dip=q.dip, rake=q.rake)
         return JSONResponse(out)           # already plain types, skip re-encoding
 
     @app.get("/api/buildings")

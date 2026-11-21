@@ -1,47 +1,47 @@
 {
  "area": {
   "buildings": 32400,
-  "exposure_version": "1",
+  "exposure_version": "3",
   "release": "2026-11-18.0"
  },
- "p_collapse_mean": 0.10153,
+ "p_collapse_mean": 0.28635,
  "p_collapse_pct": {
-  "1": 0.027,
-  "10": 0.028,
-  "50": 0.136,
-  "90": 0.139,
-  "99": 0.14
+  "1": 0.215,
+  "10": 0.268,
+  "50": 0.301,
+  "90": 0.303,
+  "99": 0.303
  },
- "p_extensive_mean": 0.33073,
+ "p_extensive_mean": 0.58859,
  "p_extensive_pct": {
-  "1": 0.134,
-  "10": 0.137,
-  "50": 0.423,
-  "90": 0.428,
-  "99": 0.43
+  "1": 0.5,
+  "10": 0.564,
+  "50": 0.606,
+  "90": 0.608,
+  "99": 0.609
  },
- "p_moderate_mean": 0.66322,
+ "p_moderate_mean": 0.8554,
  "p_moderate_pct": {
-  "1": 0.42,
-  "10": 0.424,
-  "50": 0.778,
-  "90": 0.782,
-  "99": 0.783
+  "1": 0.805,
+  "10": 0.842,
+  "50": 0.865,
+  "90": 0.866,
+  "99": 0.866
  },
- "p_slight_mean": 0.90081,
+ "p_slight_mean": 0.97408,
  "p_slight_pct": {
-  "1": 0.775,
-  "10": 0.778,
-  "50": 0.959,
-  "90": 0.961,
-  "99": 0.961
+  "1": 0.963,
+  "10": 0.971,
+  "50": 0.976,
+  "90": 0.976,
+  "99": 0.981
  },
  "pga_pct": {
-  "1": 0.282,
-  "10": 0.284,
-  "50": 0.286,
-  "90": 0.287,
-  "99": 0.288
+  "1": 0.493,
+  "10": 0.494,
+  "50": 0.496,
+  "90": 0.497,
+  "99": 0.497
  },
  "scenario": {
   "depth_km": 10,
@@ -50,14 +50,29 @@
   "mag": 7.5
  },
  "summary": {
+  "beyond_validity": false,
   "buildings": 32400,
-  "expected_collapses": 3289,
-  "heavy": 21804,
-  "max_mmi": 7.5,
-  "max_pga": 0.288,
-  "people_at_risk": 149963,
-  "severe": 0,
+  "distance_method": "ps2ff (strike unknown)",
+  "expected_collapses": 9280,
+  "ghs_pop_total": 499865,
+  "gm_models": [
+   "BA08",
+   "BSSA14"
+  ],
+  "gm_region": "crustal",
+  "heavy": 32400,
+  "height_source": "Google Open Buildings 2.5D Temporal",
+  "max_mmi": 8.3,
+  "max_pga": 0.497,
+  "mechanism": "unspec",
+  "people_at_risk": 302755,
+  "people_total": 526886,
+  "population_source": "GHS-POP",
+  "severe": 32063,
   "soil": "flat 250 m/s (no soil map found)",
-  "vs30_median": 250
+  "storeys_measured_share": 0.819,
+  "time_of_day": "night",
+  "vs30_median": 250,
+  "ztor_km": 0.0
  }
 }

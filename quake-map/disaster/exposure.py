@@ -1,7 +1,7 @@
 """Turn raw building footprints into an exposure table: use, storeys, construction type, people."""
 import numpy as np, pandas as pd
 
-METHOD_VERSION = "1"    # bump whenever the exposure method changes; cached areas are then rebuilt from raw footprints
+METHOD_VERSION = "3"    # bump whenever the exposure method changes; cached areas are then rebuilt from raw footprints
 
 LABEL = {}
 def _add(cat, *names):
@@ -27,14 +27,49 @@ DENS = {"residential": 15, "office": 12, "retail": 10, "hotel": 30, "education":
 SINGLE_STOREY = ["industrial", "warehouse", "outbuilding", "large", "religious", "entertainment"]
 ENGINEERED = ["industrial", "warehouse", "office", "retail", "hotel", "education", "medical"]
 
-def attributes(b, area):
-    """b: DataFrame with default index (optional columns class/building/subtype/height/num_floors); area: footprint m2."""
+def _levels(b, area, use, apt, h=None, spread=None, storey_m=None):
+    """Storeys and where they came from. Priority: label (num_floors / building:levels) > height label / storey_m >
+    Google 2.5D height > today's heuristic. Google heights that are unstable (spread > 6 m) or too low (< 2 m) are not
+    trusted: those buildings use the heuristic and are marked guess_unstable."""
+    from heights import STOREY_M
+    sm = storey_m or STOREY_M
     def num(*names):
         for n in names:
             if n in b:
                 return pd.to_numeric(b[n], errors="coerce")
         return pd.Series(np.nan, index=b.index)
+    default = pd.Series(np.where(apt, 6, np.where(use.isin(["office", "retail", "hotel", "education", "medical"]), 4,
+              np.where(use.isin(SINGLE_STOREY), 1, np.where(area < 150, 2, 3)))), index=b.index, dtype=float)
+    lab = num("building:levels", "num_floors", "floors")
+    lab_h = num("height") / sm
+    src = pd.Series("guess", index=b.index, dtype=object)
+    levels = default.copy()
+    if h is not None:
+        h = pd.Series(np.asarray(h, float), index=b.index)
+        sp = pd.Series(np.asarray(spread, float) if spread is not None else np.zeros(len(b)), index=b.index).fillna(0)
+        has = h.notna()
+        good = has & (h >= 2.0) & (sp <= 6.0)
+        levels = levels.where(~good, (h / sm))
+        src = src.mask(good, "google").mask(has & ~good, "guess_unstable")
+    single = use.isin(SINGLE_STOREY)
+    levels = levels.where(~(single & src.isin(["google", "guess", "guess_unstable"])), levels.clip(upper=2))
+    levels = levels.mask(lab_h.notna(), lab_h)
+    src = src.mask(lab_h.notna(), "label_height")
+    levels = levels.mask(lab.notna(), lab)
+    src = src.mask(lab.notna(), "label")
+    return levels.clip(1, 40).round(), src
 
+def attributes(b, area, heights=None, storey_m=None, mix=None):
+    """b: DataFrame with default index (optional columns class/building/subtype/height/num_floors); area: footprint m2.
+    heights: optional DataFrame (h_google, h_spread) aligned with b. Returns (use, levels, btype, occupants) as in v1;
+    attributes_full gives the rest."""
+    d = attributes_full(b, area, heights, storey_m, mix)
+    return d["use"], d["levels"], d["btype"], d["capacity"]
+
+def attributes_full(b, area, heights=None, storey_m=None, mix=None):
+    """All per-building attributes as a dict of Series/arrays: use, levels, levels_src, p (n x 3 type probabilities),
+    btype (most likely type), capacity (people at typical occupancy)."""
+    from priors import type_probs, TYPES
     use = pd.Series(np.nan, index=b.index, dtype=object)
     for c in [c for c in ("class", "building", "subtype") if c in b]:
         use = use.fillna(b[c].astype(str).str.lower().map(LABEL))
@@ -43,27 +78,56 @@ def attributes(b, area):
         apt |= (b[c].astype(str).str.lower() == "apartments").to_numpy()
     guess = np.where(area < 20, "outbuilding", np.where(area >= 1500, "large", "residential"))
     use = use.fillna(pd.Series(guess, index=b.index))
-
-    default = np.where(apt, 6, np.where(use.isin(["office", "retail", "hotel", "education", "medical"]), 4,
-              np.where(use.isin(SINGLE_STOREY), 1, np.where(area < 150, 2, 3))))
-    levels = num("building:levels", "num_floors", "floors").fillna(num("height") / 3).fillna(pd.Series(default, index=b.index))
-    levels = levels.clip(1, 40).round()
-    levels = levels.where(~use.isin(SINGLE_STOREY), levels.clip(upper=2))
-
-    # heuristic construction type (placeholder; v2 replaces this with an ML model)
-    btype = np.where(levels <= 2, "URM", np.where(levels <= 4, "RC_LOW", "RC_MID"))
+    h = heights["h_google"].to_numpy() if heights is not None else None
+    sp = heights["h_spread"].to_numpy() if heights is not None else None
+    levels, src = _levels(b, area, use, apt, h, sp, storey_m)
     engineered = use.isin(ENGINEERED).to_numpy() | (area >= 1500)
-    btype = np.where(engineered & (levels.to_numpy() <= 4), "RC_LOW", btype)
+    p = type_probs(levels.to_numpy(), engineered, mix)
+    btype = np.array(TYPES)[p.argmax(axis=1)]
+    capacity = (area * levels * 0.8 / use.map(DENS)).round().clip(0, 4000)
+    return {"use": use, "levels": levels, "levels_src": src, "p": p, "btype": btype, "capacity": capacity}
 
-    occupants = (area * levels * 0.8 / use.map(DENS)).round().clip(0, 4000)
-    return use, levels, btype, occupants
-
-def make_exposure(b):
-    """b: GeoDataFrame of building footprints -> GeoDataFrame(geometry, btype, levels, occupants, use)."""
+def make_exposure(b, height_dir=None, pop_raster=None, data_dir=None, storey_m=None, region="IN-urban"):
+    """b: GeoDataFrame of building footprints -> GeoDataFrame with columns
+    use, levels, levels_src, btype (most likely), p_URM, p_RC_LOW, p_RC_MID, capacity, occupants (= night),
+    occ_day, occ_commute, pop_factor. g.attrs["stats"] holds totals and data-source notes.
+    height_dir: folder with Google heights (heights.py). pop_raster: GHS-POP GeoTIFF (population.py)."""
+    import heights as H, population as P, priors
     b = b.to_crs(4326) if b.crs else b.set_crs(4326)
     b = b[b.geometry.type.isin(["Polygon", "MultiPolygon"])].reset_index(drop=True)
-    area = b.to_crs(b.estimate_utm_crs()).area.to_numpy()
-    use, levels, btype, occ = attributes(b, area)
+    utm = b.estimate_utm_crs()
+    u = b.to_crs(utm)
+    area = u.area.to_numpy()
+    ht = H.building_heights(b.geometry.values, height_dir) if height_dir else None
+    d = attributes_full(b, area, ht, storey_m, priors.construction_mix(region, data_dir))
+    c = u.centroid
+    x, y = c.x.to_numpy(), c.y.to_numpy()
     g = b[["geometry"]].copy()
-    g["btype"], g["levels"], g["occupants"], g["use"] = btype, levels.astype(int), occ.astype(int), use.to_numpy()
+    g["use"] = d["use"].to_numpy()
+    g["levels"] = d["levels"].astype(int).to_numpy()
+    g["levels_src"] = d["levels_src"].to_numpy()
+    g["btype"] = d["btype"]
+    for i, t in enumerate(priors.TYPES):
+        g["p_" + t] = d["p"][:, i].astype("float32")
+    g["capacity"] = d["capacity"].astype(int).to_numpy()
+    pop = None
+    if pop_raster:
+        from pyproj import Transformer
+        w, s, e, n = b.total_bounds
+        pad = 0.02
+        lon, lat, v = P.read_pop_points(pop_raster, (w, s, e, n), pad)
+        fwd, inv = Transformer.from_crs(4326, utm, always_xy=True), Transformer.from_crs(utm, 4326, always_xy=True)
+        pop = (lon, lat, v)
+        occ, st = P.assign(g, x, y, pop, (w, s, e, n), (lambda xx, yy: inv.transform(xx, yy), lambda lo, la: fwd.transform(lo, la)), data_dir)
+    else:
+        occ, st = P.assign(g, x, y, None, data_dir=data_dir)
+    g["occupants"] = occ["night"].round().astype(int).to_numpy()
+    g["occ_day"] = occ["day"].round().astype(int).to_numpy()
+    g["occ_commute"] = occ["commute"].round().astype(int).to_numpy()
+    g["pop_factor"] = occ["factor"].astype("float32").to_numpy()
+    src = g["levels_src"].value_counts()
+    st["levels_src"] = {k: int(v) for k, v in src.items()}
+    st["levels_measured_share"] = float(src.reindex(["label", "label_height", "google"]).fillna(0).sum() / max(len(g), 1))
+    st["height_source"] = "Google Open Buildings 2.5D Temporal" if ht is not None else "none (storeys are guesses except labelled buildings)"
+    g.attrs["stats"] = st
     return g

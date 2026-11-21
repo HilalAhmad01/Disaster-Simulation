@@ -1,0 +1,13 @@
+use,night,day,commute,source
+residential,1.00,0.70,0.80,"share of the HOME population present (night 1.00 by construction: GHS-POP-scaled residents). Hazus-style approximate split; VERIFY against Hazus 6.1 Earthquake Technical Manual casualty chapter (time-of-day population distribution)."
+office,0.02,0.90,0.40,"share of capacity; night 2% = security/staff (MASTER_PLAN 1.3); day/commute Hazus-style approximate, VERIFY"
+retail,0.02,0.85,0.80,"share of capacity; approximate, VERIFY"
+hotel,0.50,0.50,0.60,"share of capacity; guests sleep here so night is NOT 2% (judgement); approximate, VERIFY"
+education,0.02,0.80,0.10,"share of capacity; approximate, VERIFY"
+medical,0.50,0.90,0.80,"share of capacity; patients stay overnight so night is NOT 2% (judgement); approximate, VERIFY"
+industrial,0.02,0.80,0.50,"share of capacity; approximate, VERIFY"
+warehouse,0.02,0.80,0.40,"share of capacity; approximate, VERIFY"
+religious,0.02,0.30,0.30,"share of capacity; approximate, VERIFY"
+entertainment,0.02,0.25,0.60,"share of capacity; approximate, VERIFY"
+outbuilding,0.02,0.10,0.10,"share of capacity; approximate, VERIFY"
+large,0.02,0.60,0.40,"share of capacity; large building of unknown use; approximate, VERIFY"

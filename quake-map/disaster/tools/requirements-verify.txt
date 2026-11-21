@@ -1,0 +1,7 @@
+# Separate environment for tools/verify_gmpe.py and tests/test_gmpe_openquake.py. Pinned to the version used for the
+# recorded verification (docs/gmpe_verification.md). On Python 3.14 pip cannot build fiona/gdal/pyzmq: install
+# openquake.engine with --no-deps, then the binary wheels of numpy scipy pandas h5py psutil requests decorator toml
+# docutils pyproj shapely pillow h3 numba alpha_shapes, and add a stub 'fiona' package (hazardlib imports it but the
+# GMPE code never calls it). On Python 3.11/3.12 a plain `pip install openquake.engine==3.26.2` works.
+openquake.engine==3.26.2
+pytest
