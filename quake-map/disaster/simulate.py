@@ -185,11 +185,12 @@ class Model:
             g[k] = p[:, i].round(3)
 
         key = (self.x // 500).astype(int) * 100000 + (self.y // 500).astype(int)
+        meas = (self.g["levels_src"].isin(["label", "label_height", "google"]).to_numpy() if "levels_src" in self.g else np.zeros(len(self.g), bool))
         df = pd.DataFrame({"key": key, "lat": self.lat, "lon": self.lon, "ds": ds, "risk": risk,
-                           "heavy": cat >= 2, "severe": cat == 3, "collapse": p[:, 3], "pga": pga})
+                           "heavy": cat >= 2, "severe": cat == 3, "collapse": p[:, 3], "pga": pga, "measured": meas})
         c = df.groupby("key").agg(lat=("lat", "mean"), lon=("lon", "mean"), n=("ds", "size"),
                                   heavy=("heavy", "sum"), severe=("severe", "sum"), risk=("risk", "sum"),
-                                  collapse=("collapse", "sum"), mean_ds=("ds", "mean"), pga=("pga", "mean"))
+                                  collapse=("collapse", "sum"), mean_ds=("ds", "mean"), pga=("pga", "mean"), measured=("measured", "mean"))
         c["dist_km"] = haversine(lat, lon, c.lat.to_numpy(), c.lon.to_numpy())
         c = c.sort_values("risk", ascending=False)
         c["rank"] = 0
@@ -199,12 +200,13 @@ class Model:
                   "properties": {"n": int(r.n), "heavy": int(r.heavy), "severe": int(r.severe),
                                  "risk": int(round(r.risk)), "collapse": round(float(r.collapse), 1),
                                  "mean_ds": round(float(r.mean_ds), 2), "pga": round(float(r.pga), 3),
-                                 "dist_km": round(float(r.dist_km), 1), "rank": int(r.rank)}}
+                                 "dist_km": round(float(r.dist_km), 1), "rank": int(r.rank), "measured": round(float(r.measured), 2)}}
                  for r in c.itertuples()]
         cas_tot, _ = casualty.casualties(pga, self.W, occ, FRAG, BETA, TYPES, *self._cas)
         cas = casualty.summary(cas_tot, casualty.pager_deaths(mmi_from_pga(pga), occ, self._cas[1]), self._cas[1])
         self.last, self.run_id, self.cells = g, next(_RUNS), feats
-        return {"run": self.run_id, "cells": {"type": "FeatureCollection", "features": feats},
+        self.scenario = {"lat": lat, "lon": lon, "depth_km": depth_km, "mag": mag, "time_of_day": time_of_day, "strike": strike, "dip": dip, "rake": rake}
+        out = {"run": self.run_id, "cells": {"type": "FeatureCollection", "features": feats},
                 "rupture": self._rupture_geojson(lat, lon, geo),
                 "summary": {"buildings": len(g), "severe": int((cat == 3).sum()), "heavy": int((cat >= 2).sum()),
                             "people_at_risk": int(round(risk.sum())), "max_pga": round(float(pga.max()), 3), "max_mmi": round(float(mmi_from_pga(pga.max())), 1),
@@ -213,6 +215,8 @@ class Model:
                             "people_total": int(round(occ.sum())), "distance_method": geo["method"],
                             "casualties": cas, "mechanism": geo["mech"], "ztor_km": round(geo["ztor_km"], 1), "gm_region": gm["region"],
                             "gm_models": gm["models"], "beyond_validity": gm["beyond_validity"], **self._data_notes()}}
+        self.summary = out["summary"]
+        return out
 
     def correlation_field(self, b_km=8.5):
         """Cached spatially correlated field generator for this area (Cholesky built once per range b)."""

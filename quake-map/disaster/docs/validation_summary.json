@@ -1,0 +1,146 @@
+{
+ "turkiye2023": {
+  "event": "turkiye2023",
+  "rows": [
+   {
+    "area": "Elbistan (AOI20)",
+    "shaking": "ShakeMap PGA",
+    "outcome": "damaged or destroyed vs no visible damage",
+    "auc": 0.699,
+    "ci90": "0.530-0.871",
+    "n": 155,
+    "positives": 9
+   },
+   {
+    "area": "Elbistan (AOI20)",
+    "shaking": "ShakeMap PGA",
+    "outcome": "destroyed vs no visible damage",
+    "auc": 0.736,
+    "ci90": "0.550-0.896",
+    "n": 155,
+    "positives": 9
+   },
+   {
+    "area": "Elbistan (AOI20)",
+    "shaking": "our shaking model",
+    "outcome": "damaged or destroyed vs no visible damage",
+    "auc": 0.597,
+    "ci90": "0.468-0.716",
+    "n": 155,
+    "positives": 9
+   },
+   {
+    "area": "Elbistan (AOI20)",
+    "shaking": "our shaking model",
+    "outcome": "destroyed vs no visible damage",
+    "auc": 0.58,
+    "ci90": "0.484-0.689",
+    "n": 155,
+    "positives": 9
+   },
+   {
+    "area": "Gaziantep (AOI01)",
+    "shaking": "ShakeMap PGA",
+    "outcome": "damaged or destroyed vs no visible damage",
+    "auc": 0.863,
+    "ci90": "0.795-0.958",
+    "n": 10775,
+    "positives": 7
+   },
+   {
+    "area": "Gaziantep (AOI01)",
+    "shaking": "ShakeMap PGA",
+    "outcome": "destroyed vs no visible damage",
+    "auc": 0.876,
+    "ci90": "0.808-0.960",
+    "n": 10773,
+    "positives": 5
+   },
+   {
+    "area": "Gaziantep (AOI01)",
+    "shaking": "our shaking model",
+    "outcome": "damaged or destroyed vs no visible damage",
+    "auc": 0.748,
+    "ci90": "0.427-0.897",
+    "n": 10775,
+    "positives": 7
+   },
+   {
+    "area": "Gaziantep (AOI01)",
+    "shaking": "our shaking model",
+    "outcome": "destroyed vs no visible damage",
+    "auc": 0.787,
+    "ci90": "0.489-0.974",
+    "n": 10773,
+    "positives": 5
+   },
+   {
+    "area": "Kirikhan (AOI18)",
+    "shaking": "ShakeMap PGA",
+    "outcome": "destroyed vs damaged (severity among damaged)",
+    "auc": 0.578,
+    "ci90": "0.535-0.619",
+    "n": 957,
+    "positives": 354
+   },
+   {
+    "area": "Kirikhan (AOI18)",
+    "shaking": "our shaking model",
+    "outcome": "destroyed vs damaged (severity among damaged)",
+    "auc": 0.499,
+    "ci90": "0.457-0.551",
+    "n": 957,
+    "positives": 354
+   }
+  ],
+  "shaking_vs_shakemap_log_ratio": {
+   "Elbistan (AOI20)": 0.21,
+   "Gaziantep (AOI01)": -0.11,
+   "Kirikhan (AOI18)": -1.04
+  }
+ },
+ "nepal2015": {
+  "event": "nepal2015",
+  "rows": [
+   {
+    "area": "Kathmandu (01)",
+    "shaking": "ShakeMap PGA",
+    "outcome": "damaged or destroyed vs no visible damage",
+    "auc": 0.432,
+    "ci90": "0.385-0.497",
+    "n": 626,
+    "positives": 160
+   },
+   {
+    "area": "Kathmandu (01)",
+    "shaking": "ShakeMap PGA",
+    "outcome": "destroyed vs no visible damage",
+    "auc": 0.431,
+    "ci90": "0.381-0.497",
+    "n": 626,
+    "positives": 160
+   },
+   {
+    "area": "Kathmandu (01)",
+    "shaking": "our shaking model",
+    "outcome": "damaged or destroyed vs no visible damage",
+    "auc": 0.499,
+    "ci90": "0.434-0.543",
+    "n": 626,
+    "positives": 160
+   },
+   {
+    "area": "Kathmandu (01)",
+    "shaking": "our shaking model",
+    "outcome": "destroyed vs no visible damage",
+    "auc": 0.501,
+    "ci90": "0.432-0.545",
+    "n": 626,
+    "positives": 160
+   }
+  ],
+  "shaking_vs_shakemap_log_ratio": {
+   "Kathmandu (01)": -0.46
+  }
+ }
+}

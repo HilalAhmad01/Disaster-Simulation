@@ -96,3 +96,26 @@ def test_responder_endpoints_flow(client, tmp_path, monkeypatch):
     dp = client.post("/api/dispatch", json={"fire_station": 2})
     assert dp.status_code == 200 and 1 <= len(dp.json()["assignments"]) <= 2
     assert client.post("/api/dispatch", json={"fire_station": 99}).status_code == 422
+
+def test_report_endpoints(client, monkeypatch):
+    import base64, report
+    monkeypatch.setattr(report, "reverse_name", lambda lat, lon: "")      # no network in tests
+    d = client.post("/api/simulate", json={"lat": 28.575, "lon": 77.33, "depth_km": 10, "magnitude": 7.0, "uncertainty": False}).json()
+    png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+    assert client.post(f"/api/report/{d['run']}/image", json={"png": base64.b64encode(png).decode()}).status_code == 200
+    assert client.post(f"/api/report/{d['run']}/image", json={"png": base64.b64encode(b"notpng").decode()}).status_code == 400
+    r = client.get(f"/api/report/{d['run']}.pdf")
+    assert r.status_code == 200 and r.content.startswith(b"%PDF") and "attachment" in r.headers["content-disposition"]
+    assert client.get(f"/api/report/{d['run']}.csv").text.startswith("section,rank")
+    assert client.get(f"/api/report/{d['run'] + 5}.pdf").status_code == 409
+
+def test_confidence_panel_reads_live_status(client):
+    items = {i["topic"]: i for i in client.get("/api/confidence").json()["items"]}
+    assert items["Building strength (fragility curves)"]["level"] == "poor" and "ncalibrated" in items["Building strength (fragility curves)"]["text"]
+    assert items["Casualty rates"]["level"] == "poor" and "Past-earthquake replays" in items
+    assert items["Past-earthquake replays"]["level"] in ("poor", "caution")
+
+def test_priority_cells_report_data_completeness(client):
+    d = client.post("/api/simulate", json={"lat": 28.575, "lon": 77.33, "magnitude": 6.5, "uncertainty": False}).json()
+    ranked = [f for f in d["cells"]["features"] if f["properties"]["rank"]]
+    assert ranked and all(0 <= f["properties"]["measured"] <= 1 for f in ranked)

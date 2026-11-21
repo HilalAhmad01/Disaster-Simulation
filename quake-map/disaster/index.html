@@ -58,8 +58,9 @@ table.d{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}table.
 <button id="v3d" type="button" class="alt">Switch to 3D view</button>
 <label class="chk"><input type="checkbox" id="shrink"> Lower buildings by their collapse chance</label>
 <p class="hint">3D shows each building at about 3 m per storey. The lowering option is a visual cue for expected collapse, not a prediction of how any building falls.</p>
-<button id="dl" type="button" class="alt">Save map as image</button><p class="hint">Drag a box to choose what to save. A click without dragging saves the whole view.</p>
-<h2>Summary</h2><div id="sum"></div><div id="unc"></div>
+<button id="dl" type="button" class="alt">Save map as image</button>
+<div class="row"><div><button id="pdf" type="button" class="alt">Report (PDF)</button></div><div><button id="csv" type="button" class="alt">Table (CSV)</button></div></div><p class="hint" id="repMsg">The report has the scenario, summary with ranges, priorities, access, dispatch order, methods and caveats.</p><p class="hint">Drag a box to choose what to save. A click without dragging saves the whole view.</p>
+<h2>Summary</h2><div id="sum"></div><details id="conf"><summary>How much to trust this</summary><div id="confBody"><p class="hint">Loading…</p></div></details><div id="unc"></div>
 <h2>Legend</h2><div class="legend">
 <div><span style="background:var(--red)"></span>Severe damage or collapse risk</div>
 <div><span style="background:var(--yel)"></span>Moderate damage</div>
@@ -181,8 +182,9 @@ let lastData=null,mcRep=null,worstOn=false;
 function drawPriority(run){
   pins.forEach(m=>m.remove());pins=[];hot=[];$('hots').innerHTML='';
   const refs=[],worst=worstOn&&mcRep;
+  const known=p=>p.measured!=null?`<br><span class="hint">Storeys known for ${pct(p.measured)} of the buildings here</span>`:'';
   const cardHtml=(p,n)=>worst?`<b>${n?n+' (worst case '+p.rank+')':'Worst case '+p.rank}</b><br>${p.n} buildings<br>People at risk: ${p.risk.toLocaleString()} expected-case median, up to ${p.risk90.toLocaleString()} in a bad case`
-    :`<b>${n?n+' (priority '+p.rank+')':'Priority '+p.rank}</b><br>${p.n} buildings, ${p.heavy} moderately damaged or worse, ${p.severe} severe<br>About ${p.risk.toLocaleString()} people at risk<br>${p.dist_km} km from epicentre`;
+    :`<b>${n?n+' (priority '+p.rank+')':'Priority '+p.rank}</b><br>${p.n} buildings, ${p.heavy} moderately damaged or worse, ${p.severe} severe<br>About ${p.risk.toLocaleString()} people at risk<br>${p.dist_km} km from epicentre${known(p)}`;
   const rowHtml=(p,n)=>worst?`<b>${p.rank}</b> ${n?n+': ':''}up to ${p.risk90.toLocaleString()} at risk (median ${p.risk.toLocaleString()})`:`<b>${p.rank}</b> ${n?n+': ':''}${p.risk.toLocaleString()} people at risk, ${p.heavy} moderate or worse`;
   const items=worst?mcRep.worst_case_cells.map(w=>({p:{rank:w.rank,n:w.n,risk:w.risk_p50,risk90:w.risk_p90},c:[w.lon,w.lat]}))
     :lastData.cells.features.filter(f=>f.properties.rank).sort((a,b)=>a.properties.rank-b.properties.rank).map(f=>({p:f.properties,c:f.geometry.coordinates}));
@@ -288,6 +290,35 @@ $('disp').onclick=async()=>{
     o.innerHTML=d.assignments.length?`<table class="d"><tr><th>#</th><th>Team</th><th>Go to</th><th>Min</th><th>Open</th></tr>`+d.assignments.map(a=>`<tr><td>${a.order}</td><td>${esc(a.team)}<br><span class="hint">${esc(a.facility)}</span></td><td>area ${a.cell_rank} (${a.people_at_risk.toLocaleString()} at risk)</td><td>${a.travel_min}</td><td>${pct(a.p_route_open==null?0:a.p_route_open)}</td></tr>`).join('')+'</table><p class="hint">Teams go where they reach the most people at risk per minute. Suggestion for planning only.</p>':'No working facilities of those kinds were found.';
   }catch(e){o.textContent=e.message}
 };
+
+
+// ---- model confidence panel ----
+const LV={good:['#3aa655','Good'],caution:['#f2b705','Use with care'],poor:['#d7263d','Weak']};
+$('conf').addEventListener('toggle',async()=>{
+  if(!$('conf').open)return;
+  try{const d=await (await fetch('/api/confidence')).json();
+    $('confBody').innerHTML=d.items.map(i=>`<div style="margin:6px 0"><span class="fac-dot" style="background:${LV[i.level][0]}"></span><b>${esc(i.topic)}</b> <span class="hint">(${LV[i.level][1]})</span><br><span class="hint">${esc(i.text)}</span></div>`).join('');
+  }catch(e){$('confBody').textContent='Could not load.'}
+});
+// ---- report export ----
+async function getReport(kind){
+  const m=$('repMsg');if(!runNo){m.textContent='Run a simulation first.';return}
+  m.textContent='Preparing the report…';$('pdf').disabled=$('csv').disabled=true;
+  try{
+    if(kind==='pdf'){
+      const div=$('map');await new Promise(ok=>(map.loaded()&&!map.isMoving())?ok():map.once('idle',ok));
+      const blob=await new Promise(ok=>makePng(0,0,div.clientWidth,div.clientHeight,ok));
+      const b64=await new Promise(ok=>{const fr=new FileReader();fr.onload=()=>ok(String(fr.result).split(',')[1]);fr.readAsDataURL(blob)});
+      const r=await fetch(`/api/report/${runNo}/image`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({png:b64})});
+      if(!r.ok)throw new Error((await r.json()).detail||'Could not send the map image.');
+    }
+    const r=await fetch(`/api/report/${runNo}.${kind}`);if(!r.ok)throw new Error((await r.json()).detail||'Could not build the report.');
+    const b=await r.blob(),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=`quake-report-${runNo}.${kind}`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+    m.textContent='Report saved.';
+  }catch(e){m.textContent=e.message}
+  $('pdf').disabled=$('csv').disabled=false;
+}
+$('pdf').onclick=()=>getReport('pdf');$('csv').onclick=()=>getReport('csv');
 // ---- box selection: "png" saves a map image, "area" downloads buildings for that area ----
 $('dl').onclick=()=>{if(map){selecting=selecting==='png'?null:'png';selUI()}};
 $('area').onclick=()=>{if(map){selecting=selecting==='area'?null:'area';selUI()}};
@@ -371,7 +402,7 @@ $('areaSel').onchange=async()=>{
     applyArea(d);m.textContent=`Using ${d.buildings.toLocaleString()} buildings (about ${d.people.toLocaleString()} people).`;$('refresh').hidden=true;
   }catch(err){m.textContent=err.message}
 };
-function makePng(x,y,w,h){
+function makePng(x,y,w,h,cb){
   const cv=map.getCanvas(),k=cv.width/cv.clientWidth,S=v=>Math.round(v*k);
   const W=Math.max(S(w),S(520)),hd=S(58),ft=S(110),H=hd+S(h)+ft,ox=Math.round((W-S(w))/2);
   const o=document.createElement('canvas');o.width=W;o.height=H;const c=o.getContext('2d');
@@ -398,7 +429,7 @@ function makePng(x,y,w,h){
   c.font=F(11);c.fillStyle='#5b6874';
   c.fillText('Estimate for planning, not confirmed damage.',S(14),fy+S(70));
   c.fillText('Map © OpenStreetMap contributors. Buildings: Overture Maps Foundation, OpenStreetMap contributors.',S(14),fy+S(88));
-  o.toBlob(b=>{const a=document.createElement('a');a.href=URL.createObjectURL(b);
+  o.toBlob(b=>{if(cb){cb(b);return}const a=document.createElement('a');a.href=URL.createObjectURL(b);
     a.download='quake-map'+(lastRun?'-M'+lastRun.mag:'')+'.png';document.body.appendChild(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(a.href),3000)});
 }

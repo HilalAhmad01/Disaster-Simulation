@@ -208,6 +208,12 @@ def main():
     if len(df):
         md.append(df.drop(columns=[]).round(3).to_markdown(index=False))
     (HERE / "docs" / f"validation_{a.event}.md").write_text("\n".join(md) + "\n")
+    head = [{"area": r["area"], "shaking": r["shaking"], "outcome": r["outcome"], "auc": round(r["AUC"], 3), "ci90": r["AUC 90% CI"], "n": r["n"], "positives": r["damaged"]}
+            for r in rows if r["ranked by"] == "full model"]
+    summ_f = HERE / "docs" / "validation_summary.json"
+    summ = json.loads(summ_f.read_text()) if summ_f.exists() else {}
+    summ[a.event] = {"event": a.event, "rows": head, "shaking_vs_shakemap_log_ratio": {p["area"]: round(p["log ratio our/ShakeMap (median)"], 2) for p in per_area}}
+    summ_f.write_text(json.dumps(summ, indent=1))
     print("\n".join(md))
 
 if __name__ == "__main__":

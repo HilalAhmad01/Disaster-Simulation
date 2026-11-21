@@ -8,7 +8,8 @@ from overture import fetch_buildings, latest_release
 from places import reverse_name
 from areas import Registry
 from jobs import Jobs
-import exposure, responder_layer
+import exposure, responder_layer, report, confidence
+import base64
 
 here = pathlib.Path(__file__).resolve().parent
 root = here.parent if here.name == "backend" else here   # works with or without a backend/ folder
@@ -49,6 +50,7 @@ class State:
         self.lock = threading.Lock()
         self.mc, self.mc_jobs = {}, {}              # run number -> uncertainty report / job id
         self.layer = None                           # responder layer for the active model (facilities, roads)
+        self.report_img, self.last_dispatch = {}, {}   # run -> browser map image (bytes) / last dispatch list
         self.load_default()
 
     def load_default(self):
@@ -301,9 +303,50 @@ def create_app(data_dir=None):
     def dispatch(t: Teams):
         layer = need_layer()
         try:
-            return {"assignments": layer.dispatch({k: v for k, v in t.model_dump().items() if v})}
+            res = layer.dispatch({k: v for k, v in t.model_dump().items() if v})
+            st.last_dispatch[layer.model.run_id] = res
+            return {"assignments": res}
         except ValueError as ex:
             raise HTTPException(409, str(ex))
+
+    # ---- report export (Phase 6.3) ----
+    class Image(BaseModel):
+        png: str = Field(max_length=12_000_000)         # base64 of the browser's map image
+
+    @app.post("/api/report/{run}/image")
+    def report_image(run: int, img: Image):
+        m = st.need()
+        if run != m.run_id:
+            raise HTTPException(409, "These results are out of date. Run the simulation again.")
+        try:
+            raw = base64.b64decode(img.png.split(",")[-1], validate=True)
+        except Exception:
+            raise HTTPException(400, "The image could not be read.")
+        if not raw.startswith(b"\x89PNG"):
+            raise HTTPException(400, "Send a PNG image.")
+        st.report_img[run] = raw
+        return {"ok": True}
+
+    def report_ctx(run):
+        m = st.need()
+        if run != m.run_id or m.last is None:
+            raise HTTPException(409, "These results are out of date. Run the simulation again.")
+        area = st.registry.meta(st.active_id) if st.active_id else {"name": "loaded area"}
+        acc = st.layer.access.get(run) if st.layer is not None and st.layer.model is m else None
+        return report.build_context(m, area, st.mc.get(run), acc["summary"] if acc else None, st.last_dispatch.get(run), st.report_img.get(run))
+
+    @app.get("/api/report/{run}.pdf")
+    def report_pdf(run: int):
+        return Response(report.to_pdf(report_ctx(run)), media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="quake-report-{run}.pdf"'})
+
+    @app.get("/api/report/{run}.csv")
+    def report_csv(run: int):
+        return Response(report.to_csv(report_ctx(run)), media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="quake-report-{run}.csv"'})
+
+    @app.get("/api/confidence")
+    def confidence_items():
+        """Status of each input (placeholder, estimated, measured) for the model-confidence panel."""
+        return {"items": confidence.build(st.model, st.registry.meta(st.active_id) if st.active_id else None, st.data)}
 
     @app.get("/api/name")
     def place_name(lat: float, lon: float):
