@@ -1,0 +1,11 @@
+highway,width_m,source
+motorway,14.0,"ASSUMED carriageway width defaults (per road class, 2 directions) used when OSM has no width tag; refine with local data. Lanes x 3.5 m is used when OSM has a lanes tag."
+trunk,12.0,ASSUMED
+primary,10.0,ASSUMED
+secondary,8.0,ASSUMED
+tertiary,7.0,ASSUMED
+unclassified,5.5,ASSUMED
+residential,5.5,ASSUMED
+living_street,4.0,ASSUMED
+service,4.0,ASSUMED
+default,5.5,ASSUMED

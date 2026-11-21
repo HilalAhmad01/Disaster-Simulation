@@ -4,7 +4,7 @@ import numpy as np, pandas as pd, geopandas as gpd
 import shapely
 from shapely.geometry import box, mapping
 from gmpe import pga_g, mmi_from_pga
-import rupture, gmm
+import rupture, gmm, casualty
 from soil import vs30_at
 from scipy.special import ndtr
 
@@ -145,6 +145,7 @@ class Model:
         self.occ_by["day"] = self.g["occ_day"].to_numpy(float) if "occ_day" in self.g else self.occ_by["night"]
         self.occ_by["commute"] = self.g["occ_commute"].to_numpy(float) if "occ_commute" in self.g else self.occ_by["night"]
         self.stats = dict(getattr(self.g, "attrs", {}).get("stats") or {})
+        self._cas = casualty.load(data_dir)
 
     def run(self, lat, lon, depth_km, mag, time_of_day="night", strike=None, dip=None, rake=None, pga_override=None):
         """One scenario. strike (degrees clockwise from north) switches on a finite rectangular rupture (dip and rake
@@ -200,7 +201,9 @@ class Model:
                                  "mean_ds": round(float(r.mean_ds), 2), "pga": round(float(r.pga), 3),
                                  "dist_km": round(float(r.dist_km), 1), "rank": int(r.rank)}}
                  for r in c.itertuples()]
-        self.last, self.run_id = g, next(_RUNS)
+        cas_tot, _ = casualty.casualties(pga, self.W, occ, FRAG, BETA, TYPES, *self._cas)
+        cas = casualty.summary(cas_tot, casualty.pager_deaths(mmi_from_pga(pga), occ, self._cas[1]), self._cas[1])
+        self.last, self.run_id, self.cells = g, next(_RUNS), feats
         return {"run": self.run_id, "cells": {"type": "FeatureCollection", "features": feats},
                 "rupture": self._rupture_geojson(lat, lon, geo),
                 "summary": {"buildings": len(g), "severe": int((cat == 3).sum()), "heavy": int((cat >= 2).sum()),
@@ -208,7 +211,7 @@ class Model:
                             "vs30_median": int(np.median(self.vs30)), "soil": self.soil,
                             "expected_collapses": int(round(p[:, 3].sum())), "time_of_day": time_of_day,
                             "people_total": int(round(occ.sum())), "distance_method": geo["method"],
-                            "mechanism": geo["mech"], "ztor_km": round(geo["ztor_km"], 1), "gm_region": gm["region"],
+                            "casualties": cas, "mechanism": geo["mech"], "ztor_km": round(geo["ztor_km"], 1), "gm_region": gm["region"],
                             "gm_models": gm["models"], "beyond_validity": gm["beyond_validity"], **self._data_notes()}}
 
     def correlation_field(self, b_km=8.5):
@@ -227,7 +230,7 @@ class Model:
         key = (self.x // 500).astype(np.int64) * 100000 + (self.y // 500).astype(np.int64)
         cell = pd.factorize(key, sort=True)[0]
         return {"mu": h["mu"].copy(), "tau": np.asarray(h["tau"]).copy(), "phi": np.asarray(h["phi"]).copy(), "W": self.W, "frag": dict(FRAG), "beta": dict(BETA),
-                "samples": FRAGILITY_META.get("samples", {}), "occ": self.occ_by[h["scenario"]["time_of_day"]], "cell": cell, "run": self.run_id, "lat": self.lat, "lon": self.lon,
+                "samples": FRAGILITY_META.get("samples", {}), "occ": self.occ_by[h["scenario"]["time_of_day"]], "cell": cell, "run": self.run_id, "casualty": self._cas, "lat": self.lat, "lon": self.lon,
                 "scenario": dict(h["scenario"])}
 
     @staticmethod

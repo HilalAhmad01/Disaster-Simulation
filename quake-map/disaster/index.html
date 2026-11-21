@@ -21,6 +21,9 @@ button:disabled{opacity:.6;cursor:wait}
 .selbox{position:absolute;border:2px dashed var(--ink);background:rgba(28,38,48,.12);pointer-events:none;z-index:5}
 .prog{height:6px;background:var(--line);border-radius:3px;margin-top:6px;overflow:hidden}.prog i{display:block;height:100%;background:var(--ink);width:0;transition:width .3s}
 details{margin:10px 0 0}summary{cursor:pointer;font-weight:500}
+.fac-dot{width:11px;height:11px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:-1px}
+.rt{width:auto;margin:4px 0 0 6px;padding:2px 8px;font-size:12px;background:#fff;color:var(--ink);border:1px solid var(--ink)}
+table.d{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}table.d td,table.d th{padding:3px 4px;border-bottom:1px solid var(--line);text-align:left}
 .hint{color:#5b6874;font-size:13px;margin:6px 0 0}
 .stat{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--line)}
 .legend span{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:6px;vertical-align:-1px}
@@ -62,7 +65,15 @@ details{margin:10px 0 0}summary{cursor:pointer;font-weight:500}
 <div><span style="background:var(--yel)"></span>Moderate damage</div>
 <div><span style="background:var(--grn)"></span>Light damage</div>
 <div><span style="background:var(--blu)"></span>Little or no damage</div></div>
-<h2>Most at-risk neighbourhoods</h2><button id="worst" type="button" class="alt" hidden>Show worst-case priorities</button><div id="hots"></div></div>
+<h2>Most at-risk neighbourhoods</h2><button id="worst" type="button" class="alt" hidden>Show worst-case priorities</button><div id="hots"></div>
+<h2>Responders</h2>
+<button id="resp" type="button" class="alt">Show hospitals, fire stations and roads</button><p class="hint" id="respMsg">Finds facilities and the road network for this area (first time needs internet, about a minute or two). Facilities in damaged buildings are greyed out.</p>
+<div id="respTools" hidden>
+<button id="acc" type="button" class="alt">Estimate hospital access for this quake</button><div id="accOut"></div>
+<label for="routeFrom">Route to priority areas from</label><select id="routeFrom"><option value="nearest:fire_station">nearest working fire station</option><option value="nearest:hospital">nearest working hospital</option><option value="nearest:police">nearest working police station</option></select>
+<p class="hint">Press <b>Route</b> next to a neighbourhood above. Red parts of a route are streets that debris may block.</p>
+<h2>Dispatch order</h2><div class="row"><div><label for="tFire">Fire teams</label><input id="tFire" type="number" min="0" max="50" value="2"></div><div><label for="tPol">Police</label><input id="tPol" type="number" min="0" max="50" value="2"></div><div><label for="tAmb">Ambulances</label><input id="tAmb" type="number" min="0" max="50" value="2"></div></div>
+<button id="disp" type="button" class="alt">Suggest dispatch order</button><div id="dispOut"></div></div></div>
 <p class="hint">Estimates for planning, not confirmed damage. Zoom in past street level to see individual buildings.</p>
 </aside><div id="map"></div></div>
 <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
@@ -156,7 +167,7 @@ function show(d){
   pins.forEach(m=>m.remove());pins=[];hot=[];$('hots').innerHTML='';
   const s=d.summary;
   $('sum').innerHTML=[['Buildings assessed',s.buildings],['Severe damage or collapse risk',s.severe],['Moderate damage or worse',s.heavy],
-    ['Expected collapses',s.expected_collapses],['People at risk ('+(TOD[s.time_of_day]||'night')+')',s.people_at_risk],['Peak shaking (g)',s.max_pga],['Peak intensity (MMI)',s.max_mmi],...(s.vs30_median!=null?[['Soil stiffness (Vs30)',(s.soil||'').startsWith('USGS')?s.vs30_median+' m/s':'flat '+s.vs30_median+' m/s']]:[])]
+    ['Expected collapses',s.expected_collapses],...(s.casualties?[['Estimated deaths',s.casualties.deaths],['Estimated injured',s.casualties.injury_1+s.casualties.injury_2+s.casualties.injury_3]]:[]),['People at risk ('+(TOD[s.time_of_day]||'night')+')',s.people_at_risk],['Peak shaking (g)',s.max_pga],['Peak intensity (MMI)',s.max_mmi],...(s.vs30_median!=null?[['Soil stiffness (Vs30)',(s.soil||'').startsWith('USGS')?s.vs30_median+' m/s':'flat '+s.vs30_median+' m/s']]:[])]
     .map(([k,v])=>`<div class="stat"><span>${k}</span><b>${v.toLocaleString()}</b></div>`).join('')+dataNotes(s);
   const run=++runId;
   lastData=d;mcRep=null;worstOn=false;
@@ -181,7 +192,10 @@ function drawPriority(run){
     const pop=new maplibregl.Popup({offset:16}).setHTML(cardHtml(p,null));
     pins.push(new maplibregl.Marker({element:el}).setLngLat(c).setPopup(pop).addTo(map));
     const b=document.createElement('button');b.className='hot';b.innerHTML=rowHtml(p,null);
-    b.onclick=()=>{map.flyTo({center:c,zoom:15});pins[p.rank-1].togglePopup()};$('hots').appendChild(b);
+    b.onclick=()=>{map.flyTo({center:c,zoom:15});pins[p.rank-1].togglePopup()};
+    const wrap=document.createElement('div');wrap.style.display='flex';wrap.appendChild(b);
+    if(respReady&&!worst){const rt=document.createElement('button');rt.className='rt';rt.textContent='Route';rt.onclick=()=>showRoute(p.rank);wrap.appendChild(rt)}
+    $('hots').appendChild(wrap);
     refs.push({p,c,pop,b});
   });
   nameAreas(run,refs,cardHtml,rowHtml);
@@ -204,11 +218,76 @@ async function pollUnc(run,simRun){
 }
 function showRanges(j){
   const t=j.totals,f=v=>Math.round(v).toLocaleString();
-  $('unc').innerHTML=`<h2>Ranges (${j.n} simulations)</h2>`+[['People at risk',t.people_at_risk],['Expected collapses',t.expected_collapses],['Moderate damage or worse (buildings)',t.moderate_or_worse]]
+  $('unc').innerHTML=`<h2>Ranges (${j.n} simulations)</h2>`+[['People at risk',t.people_at_risk],['Expected collapses',t.expected_collapses],['Moderate damage or worse (buildings)',t.moderate_or_worse],...(t.deaths?[['Estimated deaths',t.deaths],['Estimated injured',t.injuries]]:[])]
     .map(([k,v])=>`<div class="stat"><span>${k}</span><b>${f(v.p10)} to ${f(v.p90)}</b></div>`).join('')+
     `<p class="hint">10th to 90th percentile, median ${f(t.people_at_risk.p50)} people. The spread comes from uncertain shaking, building strength, construction type and population. Fragility spread is an assumption (±25%) until the curves are calibrated.</p>`;
   $('worst').hidden=false;if(lastRun)lastRun.ranges=t;
 }
+
+// ---- responders: facilities, access, routes, dispatch ----
+const FAC_COL={hospital:'#d7263d',clinic:'#e8798a',ambulance:'#8e44ad',fire_station:'#e67e22',police:'#2c5aa0',shelter:'#2e8b57',open_space:'#9cc9a8',school:'#b39b2e'};
+const FAC_NAME={hospital:'Hospital',clinic:'Clinic',ambulance:'Ambulance station',fire_station:'Fire station',police:'Police station',shelter:'Shelter / assembly point',open_space:'Open space (possible shelter)',school:'School (possible shelter)'};
+let respReady=false;
+function ensureRespLayers(){
+  if(map.getSource('fac'))return;
+  map.addSource('fac',{type:'geojson',data:EMPTY});map.addSource('acc',{type:'geojson',data:EMPTY});map.addSource('route',{type:'geojson',data:EMPTY});map.addSource('routeRisk',{type:'geojson',data:EMPTY});
+  map.addLayer({id:'acc-c',type:'circle',source:'acc',paint:{'circle-radius':['interpolate',['linear'],['zoom'],11,5,14,14,17,38],'circle-opacity':.55,'circle-blur':.4,
+    'circle-color':['interpolate',['linear'],['get','minutes'],0,'#3aa655',10,'#a6c23b',20,'#f2b705',40,'#e67e22',70,'#d7263d']}},map.getLayer('bld')?'bld':undefined);
+  map.addLayer({id:'route-line',type:'line',source:'route',paint:{'line-color':'#2c5aa0','line-width':4,'line-dasharray':[2,1]}});
+  map.addLayer({id:'route-risk',type:'line',source:'routeRisk',paint:{'line-color':'#d7263d','line-width':6}});
+  map.addLayer({id:'fac-c',type:'circle',source:'fac',paint:{'circle-radius':['interpolate',['linear'],['zoom'],11,3,15,7,17,10],
+    'circle-color':['case',['get','may_not_work'],'#8a949c',['match',['get','kind'],'hospital',FAC_COL.hospital,'clinic',FAC_COL.clinic,'ambulance',FAC_COL.ambulance,'fire_station',FAC_COL.fire_station,'police',FAC_COL.police,'shelter',FAC_COL.shelter,'open_space',FAC_COL.open_space,FAC_COL.school]],
+    'circle-stroke-color':'#fff','circle-stroke-width':1.2,'circle-opacity':['case',['get','may_not_work'],.7,.95]}});
+  map.on('click','fac-c',e=>{const p=e.features[0].properties;
+    new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<b>${esc(p.name||FAC_NAME[p.kind])}</b><br>${FAC_NAME[p.kind]}${p.beds?`, ${p.beds} beds`:''}${lastRun&&p.kind!=='open_space'?`<br>Chance its building is heavily damaged: ${pct(+p.p_damaged)}${p.may_not_work===true||p.may_not_work==='true'?'<br><b>May not be working.</b>':''}`:''}`).addTo(map)});
+  map.on('mouseenter','fac-c',()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave','fac-c',()=>map.getCanvas().style.cursor='');
+}
+async function waitJob(id,msgEl){
+  for(;;){const j=await (await fetch('/api/jobs/'+id)).json();msgEl.innerHTML=`${esc(j.message)}<div class="prog"><i style="width:${Math.round(j.progress*100)}%"></i></div>`;
+    if(j.state==='done')return j.result;if(j.state==='error')throw new Error(j.error||'Failed');await new Promise(ok=>setTimeout(ok,1000))}}
+async function loadFacilities(){
+  const g=await (await fetch('/api/facilities')).json();ensureRespLayers();map.getSource('fac').setData(g);
+}
+$('resp').onclick=async()=>{
+  if(!map)return;const m=$('respMsg');$('resp').disabled=true;
+  try{
+    const r=await fetch('/api/responders/prepare',{method:'POST'});if(!r.ok)throw new Error((await r.json()).detail||'Could not start.');
+    ensureRespLayers();const res=await waitJob((await r.json()).job,m);
+    await loadFacilities();respReady=true;$('respTools').hidden=false;if(lastData)drawPriority(++runId);
+    const k=res.facilities||{};m.innerHTML=`Found ${k.hospital||0} hospitals, ${k.clinic||0} clinics, ${k.fire_station||0} fire stations, ${k.police||0} police stations and ${k.shelter||0} shelters; ${res.road_segments.toLocaleString()} street segments.`+(res.notes&&res.notes.length?'<br>'+res.notes.map(esc).join('<br>'):'')
+      +'<br><span class="fac-dot" style="background:#d7263d"></span>hospital <span class="fac-dot" style="background:#e67e22"></span>fire <span class="fac-dot" style="background:#2c5aa0"></span>police <span class="fac-dot" style="background:#2e8b57"></span>shelter <span class="fac-dot" style="background:#8a949c"></span>may not work';
+  }catch(e){m.textContent=e.message}
+  $('resp').disabled=false;
+};
+$('acc').onclick=async()=>{
+  const o=$('accOut');o.innerHTML='';if(!lastRun){o.textContent='Run a simulation first.';return}
+  $('acc').disabled=true;
+  try{
+    const r=await fetch('/api/access',{method:'POST'});const d=await r.json();if(!r.ok)throw new Error(d.detail||'Could not start.');
+    const res=await waitJob(d.job,o);const a=await (await fetch('/api/access/'+res.run)).json();
+    ensureRespLayers();map.getSource('acc').setData(a.cells);await loadFacilities();
+    const s=a.summary;o.innerHTML=`<div class="stat"><span>People within 30 min of a working hospital</span><b>${pct(s.share_within_30min)}</b></div><div class="stat"><span>People with no route to one</span><b>${pct(s.share_no_access)}</b></div><div class="stat"><span>Typical travel time</span><b>${s.median_minutes} min</b></div><div class="stat"><span>Hospitals that may not work</span><b>${s.hospitals_may_not_work} of ${s.hospitals}</b></div><div class="stat"><span>Streets likely blocked</span><b>${s.streets_likely_blocked.toLocaleString()} of ${s.streets.toLocaleString()}</b></div><p class="hint">Green to red circles: minutes to the nearest working hospital. Debris-blocking constants are placeholders, not calibrated.</p>`;
+  }catch(e){o.textContent=e.message}
+  $('acc').disabled=false;
+};
+async function showRoute(rank){
+  try{
+    const r=await fetch(`/api/route?rank=${rank}&source=${encodeURIComponent($('routeFrom').value)}`);const g=await r.json();
+    if(!r.ok)throw new Error(typeof g.detail==='string'?g.detail:'No route.');
+    ensureRespLayers();map.getSource('route').setData(g);
+    map.getSource('routeRisk').setData({type:'FeatureCollection',features:g.properties.risky_segments.map(c=>({type:'Feature',geometry:{type:'LineString',coordinates:c},properties:{}}))});
+    const c=g.geometry.coordinates,b=c.reduce((bb,p)=>bb.extend(p),new maplibregl.LngLatBounds(c[0],c[0]));map.fitBounds(b,{padding:80,duration:700});
+    new maplibregl.Popup().setLngLat(c[Math.floor(c.length/2)]).setHTML(`<b>From ${esc(g.properties.facility)}</b><br>${g.properties.time_min} min free-flow (${g.properties.expected_time_min} min with likely blockages)<br>Chance the route is open: ${pct(g.properties.p_open)}`).addTo(map);
+  }catch(e){$('accOut').textContent=e.message}
+}
+$('disp').onclick=async()=>{
+  const o=$('dispOut');o.textContent='Working…';
+  try{
+    const r=await fetch('/api/dispatch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fire_station:+$('tFire').value,police:+$('tPol').value,ambulance:+$('tAmb').value})});
+    const d=await r.json();if(!r.ok)throw new Error(typeof d.detail==='string'?d.detail:'Check the numbers.');
+    o.innerHTML=d.assignments.length?`<table class="d"><tr><th>#</th><th>Team</th><th>Go to</th><th>Min</th><th>Open</th></tr>`+d.assignments.map(a=>`<tr><td>${a.order}</td><td>${esc(a.team)}<br><span class="hint">${esc(a.facility)}</span></td><td>area ${a.cell_rank} (${a.people_at_risk.toLocaleString()} at risk)</td><td>${a.travel_min}</td><td>${pct(a.p_route_open==null?0:a.p_route_open)}</td></tr>`).join('')+'</table><p class="hint">Teams go where they reach the most people at risk per minute. Suggestion for planning only.</p>':'No working facilities of those kinds were found.';
+  }catch(e){o.textContent=e.message}
+};
 // ---- box selection: "png" saves a map image, "area" downloads buildings for that area ----
 $('dl').onclick=()=>{if(map){selecting=selecting==='png'?null:'png';selUI()}};
 $('area').onclick=()=>{if(map){selecting=selecting==='area'?null:'area';selUI()}};
@@ -334,6 +413,7 @@ $('v3d').onclick=()=>{if(map)set3d(!is3d)};
 $('shrink').onchange=()=>{if(map&&map.getLayer('bld3d')){map.setPaintProperty('bld3d','fill-extrusion-height',h3());map.setPaintProperty('far3d','fill-extrusion-height',h3())}};
 function dataNotes(s){
   const n=[];
+  if(s.casualties)n.push(`<b>Casualty rates are unverified placeholders.</b> Independent USGS PAGER estimate of deaths: about ${s.casualties.pager_deaths.toLocaleString()}${s.casualties.pager_disagreement?' (<b>our figure differs a lot from it</b>)':''}.`);
   if(s.storeys_measured_share!=null)n.push(`Storeys known for ${pct(s.storeys_measured_share)} of buildings (${esc(s.height_source||'')}); the rest are estimated.`);
   if(s.gm_models)n.push(`Shaking: ${esc(s.gm_models.join(' + '))} (${s.gm_region==='himalaya'?'Himalayan region':'worldwide crustal'}); distance by ${esc(s.distance_method||'')}${s.mechanism&&s.mechanism!=='unspec'?', '+({ss:'strike-slip',rs:'reverse',ns:'normal'}[s.mechanism]):''}.`);
   if(s.beyond_validity)n.push('<b>The epicentre is farther than these models are meant for (over 400 km); treat the result as rough.</b>');

@@ -1,0 +1,9 @@
+{
+ "verified": false,
+ "note": "UNVERIFIED parameters, written from memory; replace with the values named in each field's source before relying on casualty numbers.",
+ "collapse_fraction_given_complete": {"URM": 0.15, "RC_LOW": 0.15, "RC_MID": 0.13,
+   "source": "Hazus-style fraction of 'complete' damage that is collapse (URML ~ C3L ~ 15%, C3M ~ 13%). UNVERIFIED; Hazus 6.1 manual, collapse-rate table."},
+ "pager_india": {"theta": 14.05, "beta": 0.185,
+   "source": "Jaiswal & Wald (2010) / USGS PAGER empirical fatality model, India: fatality rate = Phi(ln(MMI/theta)/beta). Values recalled, UNVERIFIED (VERIFY against USGS Open-File Report 2009-1136)."},
+ "pager_flag_ratio": 5.0
+}

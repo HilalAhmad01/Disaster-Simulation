@@ -1,0 +1,6 @@
+damage_state,severity_1,severity_2,severity_3,severity_4,verified,source
+slight,0.0005,0.0,0.0,0.0,NO,"Hazus-style indoor casualty rates as fractions of occupants. UNVERIFIED: written from memory of the Hazus structure (4 severities, 5 damage cases), NOT copied from Hazus 6.1 Earthquake Technical Manual Chapter 12 tables 12-3 to 12-7 (FEMA refuses automated download). Replace with the manual's values."
+moderate,0.0025,0.0003,0.0,0.0,NO,UNVERIFIED (see above)
+extensive,0.01,0.001,0.00001,0.00001,NO,UNVERIFIED (see above)
+complete_no_collapse,0.05,0.01,0.0001,0.0001,NO,UNVERIFIED (see above)
+complete_collapse,0.40,0.20,0.05,0.10,NO,UNVERIFIED (see above)

@@ -14,7 +14,7 @@ binomial sampling noise. Seeded: the same seed gives the same numbers.
 import numpy as np, pandas as pd
 from scipy.linalg import cholesky
 from scipy.special import ndtr
-import simulate as S
+import simulate as S, casualty as K
 
 B_KM = 8.5            # correlation range (km) for PGA; Jayaram & Baker 2009 give ~8.5 km for clustered Vs30 (~40.7 km if not)
 FRAG_LN_SD = 0.25     # ASSUMPTION used when no fragility bootstrap samples exist: ln-sd of each median (one common draw per class)
@@ -81,7 +81,8 @@ def run_mc(model, n=200, seed=0, b_km=B_KM, draw_types=True, scales=None, progre
     field = field if field is not None else (None if sc["phi"] == 0 else model.correlation_field(b_km))
     cell = sn["cell"]                                                   # int cell index per building
     ncell = int(cell.max()) + 1
-    tot = {k: np.zeros(n) for k in ("people_at_risk", "expected_collapses", "moderate_or_worse")}
+    tot = {k: np.zeros(n) for k in ("people_at_risk", "expected_collapses", "moderate_or_worse", "deaths", "injuries")}
+    rates, cparams = sn.get("casualty") or K.load()
     cell_risk = np.zeros((n, ncell), np.float32)
     pe_sum, pc_sum = np.zeros(N), np.zeros(N)
     pe_store = np.zeros((n, N), np.float16)
@@ -103,6 +104,8 @@ def run_mc(model, n=200, seed=0, b_km=B_KM, draw_types=True, scales=None, progre
         m = np.exp(sc["occ"] * OCC_LN_SD * rng.standard_normal() - 0.5 * (sc["occ"] * OCC_LN_SD) ** 2)    # mean-one multiplier
         risk = occ * m * p[:, 2]
         tot["people_at_risk"][r], tot["expected_collapses"][r], tot["moderate_or_worse"][r] = risk.sum(), p[:, 3].sum(), p[:, 1].sum()
+        ct, _ = K.casualties(pga, Wr, occ * m, frag, beta, S.TYPES, rates, cparams)
+        tot["deaths"][r], tot["injuries"][r] = ct[3], ct[:3].sum()
         cell_risk[r] = np.bincount(cell, weights=risk, minlength=ncell)
         pe_sum += p[:, 2]; pc_sum += p[:, 3]; pe_store[r] = p[:, 2]
         if progress and (r % 5 == 4 or r == n - 1):

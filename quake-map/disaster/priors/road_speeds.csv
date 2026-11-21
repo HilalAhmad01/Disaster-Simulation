@@ -1,0 +1,11 @@
+highway,speed_kph,source
+motorway,60,"ASSUMED free-flow urban India speeds for OSM roads without a maxspeed tag (before damage); conservative city values, not measured."
+trunk,50,ASSUMED
+primary,40,ASSUMED
+secondary,35,ASSUMED
+tertiary,30,ASSUMED
+unclassified,25,ASSUMED
+residential,20,ASSUMED
+living_street,10,ASSUMED
+service,15,ASSUMED
+default,20,ASSUMED

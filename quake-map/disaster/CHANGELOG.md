@@ -65,3 +65,11 @@ curves are still the v1 placeholders until Phase 3.
 - `uncertainty.py`: seeded Monte Carlo (200 runs, 26 s for 483k Noida buildings): between-event term, spatially correlated within-event field,
   fragility draws, construction-type draws, occupancy factor. `POST /api/simulate` returns `uncertainty_job`; `GET /api/uncertainty/{run}`.
   UI: ranges, worst-case priorities, popup "up to x% in a bad case", PNG footer. Fragility (+-25%) and occupancy (+-20%) spreads are assumptions.
+
+### Phase 5: responder layer
+- Facilities (OSM + Overture, linked to building damage), road network + debris-blockage model, Monte Carlo access to working hospitals,
+  routes with chance-open, dispatch by linear assignment (`facilities.py`, `roads.py`, `responders.py`, `responder_layer.py`, docs/roads.md).
+  Endpoints: `/api/responders/prepare`, `/api/facilities`, `/api/access`, `/api/route`, `/api/dispatch`. Debris constants, speeds and widths are
+  assumptions (flagged in the UI).
+- Casualties by severity (`casualty.py`) with a PAGER cross-check; **rates are unverified placeholders**, flagged in the summary and UI.
+  Monte Carlo ranges include deaths and injuries.

@@ -72,3 +72,10 @@ def test_report_has_worst_case_cells(model):
     assert 1 <= len(w) <= 8 and all(w[i]["risk_p90"] >= w[i + 1]["risk_p90"] for i in range(len(w) - 1))
     assert all(c["risk_p10"] <= c["risk_p50"] <= c["risk_p90"] for c in w)
     assert rep["assumptions"]["fragility"]["URM"].startswith("assumed")           # placeholders flagged, not hidden
+
+def test_casualty_ranges_are_reported_and_zero_sigma_matches_deterministic(model):
+    det = model.run(28.575, 77.33, 12, 7.0)["summary"]["casualties"]
+    r = U.run_mc(model, n=10, seed=1, draw_types=False, scales=OFF)["totals"]
+    assert r["deaths"]["p50"] == pytest.approx(det["deaths"], abs=1.5) and r["deaths"]["p10"] == pytest.approx(r["deaths"]["p90"], rel=1e-9)
+    full = U.run_mc(model, n=40, seed=2)["totals"]
+    assert full["deaths"]["p10"] < full["deaths"]["p90"] and full["injuries"]["p90"] > full["deaths"]["p90"]

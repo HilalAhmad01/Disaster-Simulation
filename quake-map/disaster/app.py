@@ -8,7 +8,7 @@ from overture import fetch_buildings, latest_release
 from places import reverse_name
 from areas import Registry
 from jobs import Jobs
-import exposure
+import exposure, responder_layer
 
 here = pathlib.Path(__file__).resolve().parent
 root = here.parent if here.name == "backend" else here   # works with or without a backend/ folder
@@ -27,6 +27,11 @@ class Quake(BaseModel):
     rake: float | None = Field(None, ge=-180, le=180)
     uncertainty: bool = True
 
+class Teams(BaseModel):
+    fire_station: int = Field(0, ge=0, le=50)
+    police: int = Field(0, ge=0, le=50)
+    ambulance: int = Field(0, ge=0, le=50)       # drawn from ambulance stations and hospitals
+
 class Box(BaseModel):
     w: float = Field(ge=-180, le=180)
     s: float = Field(ge=-90, le=90)
@@ -43,6 +48,7 @@ class State:
         self.model, self.active_id, self.legacy_file = None, None, None
         self.lock = threading.Lock()
         self.mc, self.mc_jobs = {}, {}              # run number -> uncertainty report / job id
+        self.layer = None                           # responder layer for the active model (facilities, roads)
         self.load_default()
 
     def load_default(self):
@@ -64,7 +70,7 @@ class State:
     def activate(self, aid):
         m = Model(self.registry.load_exposure(aid), data_dir=self.data)
         with self.lock:
-            self.model, self.active_id = m, aid
+            self.model, self.active_id, self.layer = m, aid, None
         self.registry.touch(aid)
         return m
 
@@ -232,6 +238,72 @@ def create_app(data_dir=None):
             raise HTTPException(404, "Unknown area.")
         m = st.activate(aid)
         return _summary(m, aid)
+
+    # ---- responder layer (Phase 5) ----
+    def need_layer():
+        m = st.need()
+        if st.layer is None or st.layer.model is not m:
+            raise HTTPException(409, "Prepare the responder layer first (hospitals and roads).")
+        return st.layer
+
+    @app.post("/api/responders/prepare")
+    def responders_prepare():
+        """Find facilities and download the road network for the active area (background job; first run needs internet)."""
+        m = st.need()
+        aid = st.active_id or "area"
+        bbox = tuple(float(x) for x in m.bounds)
+        def work(job):
+            job.update(0.05, "Finding hospitals, fire stations and shelters…")
+            layer = responder_layer.build_for_area(st.data, aid, m, bbox, log=lambda msg: job.update(None, str(msg)))
+            if st.model is m:
+                st.layer = layer
+            kinds = layer.fac.kind.value_counts().to_dict()
+            return {"facilities": kinds, "road_nodes": int(layer.net.n_nodes), "road_segments": int(layer.net.n_roads),
+                    "notes": layer.fac.attrs.get("notes", [])}
+        return {"job": st.jobs.submit("responders", work).id}
+
+    @app.get("/api/facilities")
+    def facilities():
+        return need_layer().facilities_geojson()
+
+    @app.post("/api/access")
+    def access():
+        """Blockage and hospital access for the simulation on the map (background job)."""
+        layer = need_layer()
+        if layer.model.last is None:
+            raise HTTPException(409, "Run a simulation first.")
+        run = layer.model.run_id
+        def work(job):
+            job.update(0.1, "Estimating which streets debris may block…")
+            res = layer.compute_access()
+            if layer.model.run_id != run:
+                raise ValueError("The simulation changed while this was running. Run access again.")
+            return {"run": run, "summary": res["summary"]}
+        return {"job": st.jobs.submit("access", work).id, "run": run}
+
+    @app.get("/api/access/{run}")
+    def access_result(run: int):
+        layer = need_layer()
+        a = layer.access.get(run)
+        if a is None:
+            raise HTTPException(404, "No access result for that simulation.")
+        return {"run": run, "summary": a["summary"], "cells": a["cells"]}
+
+    @app.get("/api/route")
+    def route(rank: int, source: str = "nearest:fire_station"):
+        layer = need_layer()
+        try:
+            return layer.route(source if source.startswith("nearest:") else int(source), rank)
+        except (ValueError, KeyError) as ex:
+            raise HTTPException(409 if "first" in str(ex) else 404, str(ex).strip("'\""))
+
+    @app.post("/api/dispatch")
+    def dispatch(t: Teams):
+        layer = need_layer()
+        try:
+            return {"assignments": layer.dispatch({k: v for k, v in t.model_dump().items() if v})}
+        except ValueError as ex:
+            raise HTTPException(409, str(ex))
 
     @app.get("/api/name")
     def place_name(lat: float, lon: float):
