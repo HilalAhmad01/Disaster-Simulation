@@ -52,6 +52,17 @@
  "summary": {
   "beyond_validity": false,
   "buildings": 32400,
+  "casualties": {
+   "caveat": "UNVERIFIED parameters, written from memory; replace with the values named in each field's source before relying on casualty numbers.",
+   "deaths": 442,
+   "injury_1": 4367,
+   "injury_2": 1266,
+   "injury_3": 223,
+   "pager_deaths": 115,
+   "pager_disagreement": false,
+   "ratio_to_pager": 3.86,
+   "verified": false
+  },
   "distance_method": "ps2ff (strike unknown)",
   "expected_collapses": 2017,
   "ghs_pop_total": 499865,
@@ -60,11 +71,22 @@
    "BSSA14"
   ],
   "gm_region": "crustal",
+  "hazard": "earthquake",
   "heavy": 32063,
   "height_source": "Google Open Buildings 2.5D Temporal",
   "max_mmi": 7.3,
   "max_pga": 0.264,
   "mechanism": "unspec",
+  "peak": [
+   [
+    "Peak shaking (g)",
+    0.264
+   ],
+   [
+    "Peak intensity (MMI)",
+    7.3
+   ]
+  ],
   "people_at_risk": 115209,
   "people_total": 526886,
   "population_source": "GHS-POP",

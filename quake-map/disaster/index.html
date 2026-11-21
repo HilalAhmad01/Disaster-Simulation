@@ -36,15 +36,18 @@ table.d{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}table.
 @media(max-width:700px){#app{flex-direction:column-reverse}aside{width:100%;height:45%}}
 </style></head><body><div id="app">
 <aside>
-<h1>Earthquake damage estimate</h1>
+<h1 id="title">Earthquake damage estimate</h1>
+<label for="hz">Hazard</label><select id="hz"><option value="earthquake">Earthquake</option><option value="cyclone">Cyclone (wind)</option><option value="flood">Flood (water depth)</option></select>
 <button id="area" type="button" class="alt">Load a new area: select on map</button>
 <p class="hint" id="areaMsg">Drag a box over any place (up to about 30 km across) to download its buildings and use them. The server needs internet access.</p>
 <div id="areaBox" hidden><label for="areaSel">Saved areas</label><select id="areaSel"></select>
 <button id="refresh" type="button" class="alt" hidden>Update to the latest Overture release</button></div>
-<div class="row"><div><label for="lat">Epicentre latitude</label><input id="lat" type="number" step="any"></div>
-<div><label for="lon">Epicentre longitude</label><input id="lon" type="number" step="any"></div></div>
-<div class="row"><div><label for="mag">Magnitude</label><input id="mag" type="number" step="0.1" value="6.5"></div>
-<div><label for="depth">Depth (km)</label><input id="depth" type="number" step="1" value="15"></div></div>
+<div class="row"><div><label for="lat" id="latL">Epicentre latitude</label><input id="lat" type="number" step="any"></div>
+<div><label for="lon" id="lonL">Epicentre longitude</label><input id="lon" type="number" step="any"></div></div>
+<div id="hzEq"><div class="row"><div><label for="mag">Magnitude</label><input id="mag" type="number" step="0.1" value="6.5"></div>
+<div><label for="depth">Depth (km)</label><input id="depth" type="number" step="1" value="15"></div></div></div>
+<div id="hzCy" hidden><p class="hint">The cyclone track is a straight line through the chosen point in the direction of travel.</p><div class="row"><div><label for="cHead">Heading (&deg;)</label><input id="cHead" type="number" min="0" max="359" value="45"></div><div><label for="cSpeed">Speed (m/s)</label><input id="cSpeed" type="number" min="0" max="30" value="6"></div></div><div class="row"><div><label for="cDp">Pressure drop (hPa)</label><input id="cDp" type="number" min="5" max="150" value="80"></div><div><label for="cRmax">Eye radius (km)</label><input id="cRmax" type="number" min="5" max="200" value="30"></div></div></div>
+<div id="hzFl" hidden><label for="flFile">Flood depth map (GeoTIFF, metres)</label><input id="flFile" type="file" accept=".tif,.tiff"><label for="flScale">Depth multiplier</label><input id="flScale" type="number" min="0.1" max="10" step="0.1" value="1"><p class="hint" id="flMsg">Pick a depth raster for the flood you want to test, for example a return-period map. Nothing is bundled.</p></div>
 <label for="tod">Time of day</label><select id="tod"><option value="night" selected>Night (people at home)</option><option value="day">Day (workplaces and schools full)</option><option value="commute">Evening commute</option></select>
 <details id="adv"><summary>Advanced: fault direction</summary>
 <p class="hint">Leave blank if unknown. With a strike, the quake is a rectangular rupture along that direction and shaking stretches along the fault.</p>
@@ -111,14 +114,31 @@ function placeEpi(){const p=[+$('lon').value,+$('lat').value];
 let picking=false;
 function pickUI(){$('pick').classList.toggle('on',picking);$('pick').textContent=picking?'Click the map to place the epicentre':'Pick epicentre on map';if(map)map.getCanvas().style.cursor=picking?'crosshair':''}
 $('pick').onclick=()=>{picking=!picking;pickUI()};
+let hazard='earthquake';
+const HZNAME={earthquake:'Earthquake',cyclone:'Cyclone',flood:'Flood'};
+$('hz').onchange=()=>{hazard=$('hz').value;
+  $('hzEq').hidden=hazard!=='earthquake';$('hzCy').hidden=hazard!=='cyclone';$('hzFl').hidden=hazard!=='flood';$('adv').hidden=hazard!=='earthquake';
+  $('latL').textContent=hazard==='earthquake'?'Epicentre latitude':hazard==='cyclone'?'Track point latitude':'Latitude';$('lonL').textContent=hazard==='earthquake'?'Epicentre longitude':hazard==='cyclone'?'Track point longitude':'Longitude';
+  $('title').textContent=HZNAME[hazard]+' damage estimate';$('tod').parentElement;};
+async function requestRun(){
+  const tod=$('tod').value,post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)});
+  if(hazard==='cyclone')return post('/api/hazard/cyclone',{lat:+$('lat').value,lon:+$('lon').value,heading_deg:+$('cHead').value,speed_ms:+$('cSpeed').value,dp_hpa:+$('cDp').value,rmax_km:+$('cRmax').value,time_of_day:tod});
+  if(hazard==='flood'){
+    const f=$('flFile').files[0];if(!f)throw new Error('Choose a flood depth GeoTIFF first.');
+    const name='upload-'+f.name.replace(/[^A-Za-z0-9_.-]/g,'_').slice(0,40).replace(/\.tiff?$/i,'');
+    $('flMsg').textContent='Uploading…';const up=await fetch('/api/flood/upload?name='+encodeURIComponent(name),{method:'POST',body:f});
+    if(!up.ok)throw new Error((await up.json()).detail||'Upload failed.');$('flMsg').textContent='Uploaded '+f.name+'.';
+    return post('/api/hazard/flood',{raster:name,scale:+$('flScale').value,time_of_day:tod});
+  }
+  return post('/api/simulate',{lat:+$('lat').value,lon:+$('lon').value,depth_km:+$('depth').value,magnitude:+$('mag').value,time_of_day:tod,...optNum({strike:'strike',dip:'dip',rake:'rake'})});
+}
 $('run').onclick=async()=>{
   $('err').textContent='';$('run').disabled=true;$('run').textContent='Running…';
   try{
     if(!map)throw new Error('The map did not load. Check your connection or ad-blocker, then reload.');
-    const r=await fetch('/api/simulate',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({lat:+$('lat').value,lon:+$('lon').value,depth_km:+$('depth').value,magnitude:+$('mag').value,time_of_day:$('tod').value,...optNum({strike:'strike',dip:'dip',rake:'rake'})})});
-    if(!r.ok)throw new Error('Check the inputs: magnitude 3–9.5, valid coordinates.');
-    const d=await r.json();runNo=d.run;lastRun={tod:$('tod').value,mag:+$('mag').value,depth:+$('depth').value,lat:+$('lat').value,lon:+$('lon').value,s:d.summary};show(d);
+    const r=await requestRun();
+    if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(typeof e.detail==='string'?e.detail:'Check the inputs (valid coordinates and ranges).')}
+    const d=await r.json();runNo=d.run;lastRun={hz:hazard,tod:$('tod').value,mag:+$('mag').value,depth:+$('depth').value,lat:+$('lat').value,lon:+$('lon').value,s:d.summary};show(d);
   }catch(e){$('err').textContent=e.message}
   $('run').disabled=false;$('run').textContent='Run simulation';
 };
@@ -158,17 +178,17 @@ function show(d){
         const r=await fetch(`/api/building/${f.id}?run=${runNo}`),p=await r.json();
         if(!r.ok)throw new Error(typeof p.detail==='string'?p.detail:'Could not load this building.');
         pop.setHTML(`<b>${CAT[p.cat]}</b><br>${USE[p.use]?USE[p.use]+'<br>':''}${typeLine(p)}<br>${p.levels} storey${p.levels>1?'s':''}${SRC[p.levels_src]?' ('+SRC[p.levels_src]+')':''}<br>`+
-          `Shaking: MMI ${p.mmi} (${p.pga} g)${p.vs30?', soil Vs30 '+p.vs30+' m/s':''}<br>Chance of heavy damage: ${pct(p.p_extensive_mean!=null?p.p_extensive_mean:p.p_extensive)}${p.p_extensive_p90!=null?' (up to '+pct(p.p_extensive_p90)+' in a bad case)':''}<br>Chance of collapse: ${pct(p.p_collapse)}<br>`+
+          `${p.mmi!=null?`Shaking: MMI ${p.mmi} (${p.pga} g)${p.vs30?', soil Vs30 '+p.vs30+' m/s':''}`:`${hazard==='flood'?'Water depth':'Peak gust'}: ${p.intensity} ${hazard==='flood'?'m':'m/s'}`}<br>Chance of heavy damage: ${pct(p.p_extensive_mean!=null?p.p_extensive_mean:p.p_extensive)}${p.p_extensive_p90!=null?' (up to '+pct(p.p_extensive_p90)+' in a bad case)':''}<br>Chance of collapse: ${pct(p.p_collapse)}<br>`+
           `Est. occupants (${TOD[lastRun?lastRun.tod:'night']}): ${p.occupants} (about ${Math.round(p.risk)} at risk)`);
       }catch(err){pop.setHTML(esc(err.message))}
     });
     BL.forEach(id=>{map.on('mouseenter',id,()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave',id,()=>map.getCanvas().style.cursor='')});
   }
-  drawRupture(d.rupture);
+  drawRupture(d.rupture||d.track);
   pins.forEach(m=>m.remove());pins=[];hot=[];$('hots').innerHTML='';
   const s=d.summary;
   $('sum').innerHTML=[['Buildings assessed',s.buildings],['Severe damage or collapse risk',s.severe],['Moderate damage or worse',s.heavy],
-    ['Expected collapses',s.expected_collapses],...(s.casualties?[['Estimated deaths',s.casualties.deaths],['Estimated injured',s.casualties.injury_1+s.casualties.injury_2+s.casualties.injury_3]]:[]),['People at risk ('+(TOD[s.time_of_day]||'night')+')',s.people_at_risk],['Peak shaking (g)',s.max_pga],['Peak intensity (MMI)',s.max_mmi],...(s.vs30_median!=null?[['Soil stiffness (Vs30)',(s.soil||'').startsWith('USGS')?s.vs30_median+' m/s':'flat '+s.vs30_median+' m/s']]:[])]
+    ['Expected collapses',s.expected_collapses],...(s.casualties?[['Estimated deaths',s.casualties.deaths],['Estimated injured',s.casualties.injury_1+s.casualties.injury_2+s.casualties.injury_3]]:[]),['People at risk ('+(TOD[s.time_of_day]||'night')+')',s.people_at_risk],...(s.peak||[['Peak shaking (g)',s.max_pga],['Peak intensity (MMI)',s.max_mmi]]),...(s.vs30_median!=null?[['Soil stiffness (Vs30)',(s.soil||'').startsWith('USGS')?s.vs30_median+' m/s':'flat '+s.vs30_median+' m/s']]:[])]
     .map(([k,v])=>`<div class="stat"><span>${k}</span><b>${v.toLocaleString()}</b></div>`).join('')+dataNotes(s);
   const run=++runId;
   lastData=d;mcRep=null;worstOn=false;
@@ -184,7 +204,7 @@ function drawPriority(run){
   const refs=[],worst=worstOn&&mcRep;
   const known=p=>p.measured!=null?`<br><span class="hint">Storeys known for ${pct(p.measured)} of the buildings here</span>`:'';
   const cardHtml=(p,n)=>worst?`<b>${n?n+' (worst case '+p.rank+')':'Worst case '+p.rank}</b><br>${p.n} buildings<br>People at risk: ${p.risk.toLocaleString()} expected-case median, up to ${p.risk90.toLocaleString()} in a bad case`
-    :`<b>${n?n+' (priority '+p.rank+')':'Priority '+p.rank}</b><br>${p.n} buildings, ${p.heavy} moderately damaged or worse, ${p.severe} severe<br>About ${p.risk.toLocaleString()} people at risk<br>${p.dist_km} km from epicentre${known(p)}`;
+    :`<b>${n?n+' (priority '+p.rank+')':'Priority '+p.rank}</b><br>${p.n} buildings, ${p.heavy} moderately damaged or worse, ${p.severe} severe<br>About ${p.risk.toLocaleString()} people at risk${p.dist_km!=null?'<br>'+p.dist_km+' km from the epicentre / track point':''}${known(p)}`;
   const rowHtml=(p,n)=>worst?`<b>${p.rank}</b> ${n?n+': ':''}up to ${p.risk90.toLocaleString()} at risk (median ${p.risk.toLocaleString()})`:`<b>${p.rank}</b> ${n?n+': ':''}${p.risk.toLocaleString()} people at risk, ${p.heavy} moderate or worse`;
   const items=worst?mcRep.worst_case_cells.map(w=>({p:{rank:w.rank,n:w.n,risk:w.risk_p50,risk90:w.risk_p90},c:[w.lon,w.lat]}))
     :lastData.cells.features.filter(f=>f.properties.rank).sort((a,b)=>a.properties.rank-b.properties.rank).map(f=>({p:f.properties,c:f.geometry.coordinates}));
@@ -417,9 +437,9 @@ function makePng(x,y,w,h,cb){
   if(epi&&inside(epi.getLngLat())){const[cx,cy]=at(epi.getLngLat());c.save();c.translate(cx,cy);c.rotate(Math.PI/4);
     c.fillStyle='#1c2630';c.strokeStyle='#fff';c.lineWidth=S(3);c.fillRect(-S(9),-S(9),S(18),S(18));c.strokeRect(-S(9),-S(9),S(18),S(18));c.restore()}
   c.textAlign='left';c.textBaseline='alphabetic';
-  c.fillStyle='#1c2630';c.font=F(18,700);c.fillText('Earthquake damage estimate',S(14),S(26));
+  c.fillStyle='#1c2630';c.font=F(18,700);c.fillText(((lastRun&&HZNAME[lastRun.hz])||'Earthquake')+' damage estimate',S(14),S(26));
   c.font=F(13);c.fillStyle='#41505d';
-  c.fillText(lastRun?`Magnitude ${lastRun.mag}, depth ${lastRun.depth} km, epicentre ${lastRun.lat.toFixed(3)}, ${lastRun.lon.toFixed(3)}, ${TOD[lastRun.tod]||'night'}  |  ${new Date().toLocaleDateString()}`:'No simulation run',S(14),S(47));
+  c.fillText(lastRun?`${lastRun.hz==='earthquake'?`Magnitude ${lastRun.mag}, depth ${lastRun.depth} km, epicentre`:HZNAME[lastRun.hz]+' scenario at'} ${lastRun.lat.toFixed(3)}, ${lastRun.lon.toFixed(3)}, ${TOD[lastRun.tod]||'night'}  |  ${new Date().toLocaleDateString()}`:'No simulation run',S(14),S(47));
   const fy=hd+S(h);c.fillStyle='#cfd6db';c.fillRect(0,fy,W,S(1));
   [['Little or none',COL[0]],['Light',COL[1]],['Moderate',COL[2]],['Severe / collapse',COL[3]]].forEach(([t,col],i)=>{
     c.fillStyle=col;c.fillRect(S(14+i*125),fy+S(14),S(12),S(12));c.fillStyle='#1c2630';c.font=F(12);c.fillText(t,S(32+i*125),fy+S(24))});
@@ -444,9 +464,10 @@ $('v3d').onclick=()=>{if(map)set3d(!is3d)};
 $('shrink').onchange=()=>{if(map&&map.getLayer('bld3d')){map.setPaintProperty('bld3d','fill-extrusion-height',h3());map.setPaintProperty('far3d','fill-extrusion-height',h3())}};
 function dataNotes(s){
   const n=[];
+  if(s.hazard_note)n.push('<b>'+esc(s.hazard_note)+'</b>');
   if(s.casualties)n.push(`<b>Casualty rates are unverified placeholders.</b> Independent USGS PAGER estimate of deaths: about ${s.casualties.pager_deaths.toLocaleString()}${s.casualties.pager_disagreement?' (<b>our figure differs a lot from it</b>)':''}.`);
   if(s.storeys_measured_share!=null)n.push(`Storeys known for ${pct(s.storeys_measured_share)} of buildings (${esc(s.height_source||'')}); the rest are estimated.`);
-  if(s.gm_models)n.push(`Shaking: ${esc(s.gm_models.join(' + '))} (${s.gm_region==='himalaya'?'Himalayan region':'worldwide crustal'}); distance by ${esc(s.distance_method||'')}${s.mechanism&&s.mechanism!=='unspec'?', '+({ss:'strike-slip',rs:'reverse',ns:'normal'}[s.mechanism]):''}.`);
+  if(s.gm_models&&s.gm_models.length)n.push(`Shaking: ${esc(s.gm_models.join(' + '))} (${s.gm_region==='himalaya'?'Himalayan region':'worldwide crustal'}); distance by ${esc(s.distance_method||'')}${s.mechanism&&s.mechanism!=='unspec'?', '+({ss:'strike-slip',rs:'reverse',ns:'normal'}[s.mechanism]):''}.`);
   if(s.beyond_validity)n.push('<b>The epicentre is farther than these models are meant for (over 400 km); treat the result as rough.</b>');
   if(s.population_source)n.push(`People: ${esc(s.population_source)}${s.ghs_pop_total?`, area total about ${s.ghs_pop_total.toLocaleString()}`:''}.`);
   return n.length?`<p class="hint">${n.join('<br>')}</p>`:'';

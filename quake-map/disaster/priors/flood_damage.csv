@@ -1,0 +1,10 @@
+depth_m,loss_ratio,source
+0.0,0.00,"UNVERIFIED approximate shape of a residential depth-damage curve (fraction of building value lost). NOT copied from Huizinga et al. 2017 (JRC, EUR 28552 EN) Asia residential curves, which could not be retrieved here. Replace with the JRC values."
+0.5,0.25,UNVERIFIED
+1.0,0.40,UNVERIFIED
+1.5,0.50,UNVERIFIED
+2.0,0.60,UNVERIFIED
+3.0,0.75,UNVERIFIED
+4.0,0.85,UNVERIFIED
+5.0,0.92,UNVERIFIED
+6.0,1.00,UNVERIFIED

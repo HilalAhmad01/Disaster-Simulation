@@ -73,3 +73,15 @@ curves are still the v1 placeholders until Phase 3.
   assumptions (flagged in the UI).
 - Casualties by severity (`casualty.py`) with a PAGER cross-check; **rates are unverified placeholders**, flagged in the summary and UI.
   Monte Carlo ranges include deaths and injuries.
+
+### Phase 6: platform
+- Report export: `GET /api/report/{run}.pdf` (WeasyPrint) and `.csv`; the browser sends its map image first. Scenario, summary with ranges, priorities, access,
+  dispatch order, methods and caveats (every placeholder named), attribution. 6.4: "How much to trust this" panel from live status flags + recorded replay scores
+  (`/api/confidence`), storey completeness per priority area. 6.2: the area registry and switcher (Phase 0) cover multiple cities.
+- **6.1 vector tiles NOT implemented**: tippecanoe is not installable here, and per-run attributes cannot join onto static tiles without per-feature `feature-state`
+  calls at 483k features, which would be slower than the current lossless GeoJSON path. **6.5 not needed**: the Monte Carlo takes 26 s.
+
+### Phase 7: hazard plug-ins
+- `hazards/` interface (`intensity`, `damage`, `describe` + small hooks); the earthquake moved into `hazards/earthquake.py` with **identical numbers** (the saved baselines changed only
+  by new summary keys: 66 insertions, 0 deletions). `Model.run_hazard(hazard, params)`. Flood (raster water depth, placeholder depth-damage curve, upload endpoint) and
+  cyclone (Holland 1980 wind field along a track, placeholder wind fragility; 2.5 s for 483k buildings). Monte Carlo and casualties exist for earthquakes only.

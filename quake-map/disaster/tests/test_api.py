@@ -119,3 +119,26 @@ def test_priority_cells_report_data_completeness(client):
     d = client.post("/api/simulate", json={"lat": 28.575, "lon": 77.33, "magnitude": 6.5, "uncertainty": False}).json()
     ranked = [f for f in d["cells"]["features"] if f["properties"]["rank"]]
     assert ranked and all(0 <= f["properties"]["measured"] <= 1 for f in ranked)
+
+# ---------------- other hazards ----------------
+def test_hazard_list_and_cyclone_endpoint(client):
+    hz = client.get("/api/hazards").json()
+    assert {h["name"] for h in hz["hazards"]} == {"earthquake", "flood", "cyclone"}
+    r = client.post("/api/hazard/cyclone", json={"lat": 28.575, "lon": 77.33, "heading_deg": 45, "dp_hpa": 90, "rmax_km": 20})
+    assert r.status_code == 200 and r.json()["summary"]["hazard"] == "cyclone" and "uncertainty_job" not in r.json()
+    assert client.post("/api/hazard/cyclone", json={"lat": 28.5, "lon": 77.3, "heading_deg": 400}).status_code == 422
+
+def test_flood_upload_run_and_validation(client, tmp_path):
+    import numpy as np, rasterio
+    from rasterio.transform import from_origin
+    p = tmp_path / "d.tif"
+    with rasterio.open(p, "w", driver="GTiff", height=60, width=60, count=1, dtype="float32", crs="EPSG:4326", transform=from_origin(77.30, 28.60, 0.001, 0.001)) as ds:
+        ds.write(np.full((60, 60), 1.8, "float32"), 1)
+    assert client.post("/api/hazard/flood", json={"raster": "nope"}).status_code == 404
+    assert client.post("/api/flood/upload?name=bad name", content=p.read_bytes()).status_code == 400
+    assert client.post("/api/flood/upload?name=scen1", content=b"not a tiff").status_code == 400
+    assert client.post("/api/flood/upload?name=scen1", content=p.read_bytes()).json() == {"raster": "scen1"}
+    assert "scen1" in client.get("/api/hazards").json()["flood_rasters"]
+    r = client.post("/api/hazard/flood", json={"raster": "scen1", "scale": 1.0})
+    assert r.status_code == 200 and r.json()["summary"]["flooded_buildings"] > 0
+    assert client.post("/api/hazard/flood", json={"raster": "../x"}).status_code == 404

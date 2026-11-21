@@ -1,0 +1,6 @@
+{
+ "status": "APPROXIMATE PLACEHOLDERS",
+ "source": "Lognormal wind-gust fragility medians (m/s) for slight / moderate / extensive / complete damage, chosen so that masonry < low-rise concrete < mid-rise concrete. NOT HAZUS hurricane values (not obtained) and not fitted to data.",
+ "gust_ms_medians": {"URM": [35, 45, 55, 70], "RC_LOW": [45, 55, 70, 85], "RC_MID": [55, 65, 80, 95]},
+ "beta": 0.2
+}

@@ -45,8 +45,8 @@ def render_html(ctx):
     e = html.escape
     s, sc, mc = ctx["summary"], ctx["scenario"], ctx["mc"]
     rows = [("Buildings assessed", _n(s["buildings"])), ("Moderate damage or worse", _n(s["heavy"])), ("Severe damage or collapse risk", _n(s["severe"])),
-            ("Expected collapses", _n(s["expected_collapses"])), (f"People at risk ({TOD.get(sc['time_of_day'], '')})", _n(s["people_at_risk"])),
-            ("Peak shaking", f"{s['max_pga']} g, intensity {s['max_mmi']} (MMI)")]
+            ("Expected collapses", _n(s["expected_collapses"])), (f"People at risk ({TOD.get(sc['time_of_day'], '')})", _n(s["people_at_risk"]))]
+    rows += [(k, str(v)) for k, v in s.get("peak", [["Peak shaking (g)", s.get("max_pga")], ["Peak intensity (MMI)", s.get("max_mmi")]])]
     c = s.get("casualties")
     if c:
         rows += [("Estimated deaths (unverified rates)", _n(c["deaths"])), ("Estimated injured (all severities)", _n(c["injury_1"] + c["injury_2"] + c["injury_3"])),
@@ -74,6 +74,13 @@ def render_html(ctx):
     notes += f"<li>Soil: {e(str(dn['soil']))}.</li>" if dn.get("soil") else ""
     cav = "".join(f"<li><b>{e(k)}.</b> {e(v)}</li>" for k, v in CAVEATS)
     strike = f", strike {sc['strike']}&deg;, dip {sc['dip'] if sc['dip'] is not None else 'auto'}" if sc.get("strike") is not None else ""
+    hz = sc.get("hazard", "earthquake")
+    if hz == "earthquake":
+        scenario_html = (f"<p><b>Magnitude {sc['mag']}</b>, depth {sc['depth_km']} km, epicentre {sc['lat']:.4f}, {sc['lon']:.4f}{strike}; time of day: {TOD.get(sc['time_of_day'], '')}. "
+                         f"Shaking model: {e(' + '.join(s.get('gm_models') or []))} ({e(str(s.get('distance_method', '')))}).</p>")
+    else:
+        extra = ", ".join(f"{e(str(k))} {e(str(v))}" for k, v in sc.items() if k not in ("hazard", "time_of_day", "lat", "lon") and v is not None)
+        scenario_html = f"<p><b>{e(hz.title())} scenario</b> at {sc.get('lat', 0):.4f}, {sc.get('lon', 0):.4f}; {e(extra)}; time of day: {TOD.get(sc['time_of_day'], '')}. {e(str(s.get('hazard_note', '')))}</p>"
     return f"""<!doctype html><html><head><meta charset="utf-8"><title>Earthquake scenario report</title><style>
 @page {{ size: A4; margin: 16mm 14mm; @bottom-center {{ content: "Planning estimate, not confirmed damage - page " counter(page); font: 8pt sans-serif; color:#5b6874 }} }}
 body {{ font: 10pt/1.4 sans-serif; color:#1c2630 }} h1 {{ font-size: 18pt; margin: 0 0 2pt }} h2 {{ font-size: 12pt; margin: 14pt 0 4pt; border-bottom: 1px solid #cfd6db }}
@@ -82,8 +89,7 @@ table {{ border-collapse: collapse; width: 100% }} td, th {{ border-bottom: 1px 
 </style></head><body>
 <h1>Earthquake damage scenario</h1>
 <p class="small">{e(str(ctx['area'].get('name', '')))} &middot; generated {ctx['generated']} &middot; simulation {ctx['run']}</p>
-<p><b>Magnitude {sc['mag']}</b>, depth {sc['depth_km']} km, epicentre {sc['lat']:.4f}, {sc['lon']:.4f}{strike}; time of day: {TOD.get(sc['time_of_day'], '')}.
-Shaking model: {e(' + '.join(s.get('gm_models') or []))} ({e(str(s.get('distance_method', '')))}).</p>
+{scenario_html}
 <div class="warn"><b>Read the caveats on the last page.</b> Fragility curves and casualty rates in this version are uncalibrated or unverified placeholders; use the numbers to compare areas, not as predictions.</div>
 {img}
 <h2>Summary</h2><table>{srows}</table>

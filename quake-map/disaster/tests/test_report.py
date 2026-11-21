@@ -45,3 +45,10 @@ def test_csv_sections(model):
 def test_html_escapes_place_names(model):
     c = ctx_for(model); c["cells"][0]["name"] = "<script>x</script>"
     assert "<script>x" not in report.render_html(c) and "&lt;script&gt;" in report.render_html(c)
+
+def test_report_for_a_cyclone_has_no_earthquake_wording(model):
+    import hazards.cyclone as CY
+    model.run_hazard(CY.CycloneHazard(), dict(lat=28.575, lon=77.33, heading_deg=45, dp_hpa=90, rmax_km=20))
+    h = report.render_html(ctx_for(model))
+    assert "Cyclone scenario" in h and "Peak gust" in h and "Magnitude" not in h and "placeholders" in h
+    assert report.to_pdf(ctx_for(model)).startswith(b"%PDF")

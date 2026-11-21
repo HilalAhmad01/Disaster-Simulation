@@ -52,7 +52,7 @@ def haversine(lat1, lon1, lat2, lon2):
     return 12742 * np.arcsin(np.sqrt(a))
 
 _RUNS = itertools.count(1)        # run numbers stay unique across area switches, so stale popups can be detected
-DETAIL = ["btype", "levels", "levels_src", "p_URM", "p_RC_LOW", "p_RC_MID", "occupants", "use", "pga", "cat", "risk", "mmi", "vs30", "p_extensive", "p_collapse"]
+DETAIL = ["btype", "levels", "levels_src", "p_URM", "p_RC_LOW", "p_RC_MID", "occupants", "use", "pga", "cat", "risk", "mmi", "vs30", "p_extensive", "p_collapse", "intensity"]
 EMPTY_FC = '{"type":"FeatureCollection","features":[]}'
 
 class Model:
@@ -148,29 +148,25 @@ class Model:
         self._cas = casualty.load(data_dir)
 
     def run(self, lat, lon, depth_km, mag, time_of_day="night", strike=None, dip=None, rake=None, pga_override=None):
-        """One scenario. strike (degrees clockwise from north) switches on a finite rectangular rupture (dip and rake
+        """One earthquake scenario. strike (degrees clockwise from north) switches on a finite rectangular rupture (dip and rake
         optional); without it the epicentral distance is converted to an average Rjb (see rupture.py).
         pga_override: per-building PGA in g (e.g. from a ShakeMap) used instead of the ground-motion models; the damage,
         people and aggregation steps are unchanged (used to validate the damage model apart from the shaking model)."""
+        from hazards.earthquake import EarthquakeHazard
+        return self.run_hazard(EarthquakeHazard(), dict(lat=lat, lon=lon, depth_km=depth_km, mag=mag, time_of_day=time_of_day,
+                                                        strike=strike, dip=dip, rake=rake, pga_override=pga_override))
+
+    def run_hazard(self, hazard, params):
+        """One scenario of any hazard (MASTER_PLAN 7.1): the hazard supplies intensity and damage probabilities, everything else
+        (people, aggregation, priority cells, casualties where the hazard has them) is shared."""
+        time_of_day = params.get("time_of_day", "night")
         if time_of_day not in TIMES:
             raise ValueError(f"time_of_day must be one of {TIMES}")
         occ = self.occ_by[time_of_day]
-        if pga_override is not None:
-            pga = np.asarray(pga_override, float)
-            mu = np.log(np.maximum(pga, 1e-9))
-            sigma = tau = phi = np.zeros_like(mu)
-            rjb = r_eff = np.full(len(mu), np.nan)
-            geo = {"method": "external shaking map", "mech": "unspec", "ztor_km": 0.0, "rupture": None}
-            gm = {"region": "external", "models": [], "beyond_validity": False}
-        else:
-            dx, dy = local_xy(lat, lon, self.lat, self.lon)
-            r_eff, rjb, geo = rupture.distances(dx, dy, mag, depth_km, strike, dip, rake)
-            region = gmm.region_for(lat, lon)
-            mu, sigma, tau, phi, gm = gmm.pga(mag, r_eff, self.vs30, geo["mech"], region)
-            pga = np.exp(mu)
-        self.haz = {"mu": mu, "sigma": sigma, "tau": tau, "phi": phi, "rjb": rjb, "r_eff": r_eff,
-                    "scenario": dict(lat=lat, lon=lon, depth_km=depth_km, mag=mag, strike=strike, dip=dip, rake=rake, time_of_day=time_of_day)}
-        p = damage_probs(pga, self.W)                            # P(damage >= state), mixed over construction types
+        inten = hazard.intensity(self, params)
+        self.haz = inten.get("haz")                              # what the Monte Carlo needs (earthquake only)
+        value = inten["value"]
+        p = hazard.damage(self, inten)                           # P(damage >= state), mixed over construction types
         ds = p.sum(1)                                            # expected damage 0-4
         cat = np.digitize(ds, [0.5, 1.5, 2.5])                 # 0 blue,1 green,2 yellow,3 red
         risk = occ * p[:, 2]                                     # people in extensive+ damage
@@ -178,20 +174,21 @@ class Model:
         keep = ["geometry", "btype", "levels", "levels_src", "p_URM", "p_RC_LOW", "p_RC_MID", "use"]
         g = self.g[[c for c in keep if c in self.g]].copy()
         g["occupants"] = occ.round().astype(int)
-        g["pga"], g["cat"], g["risk"] = pga.round(3), cat, risk.round(1)
-        g["mmi"] = mmi_from_pga(pga).round(1)
-        g["vs30"] = self.vs30.round().astype(int)
+        for k, v in hazard.table(self, inten).items():
+            g[k] = v
+        g["cat"], g["risk"] = cat, risk.round(1)
         for i, k in enumerate(["p_slight", "p_moderate", "p_extensive", "p_collapse"]):
             g[k] = p[:, i].round(3)
 
         key = (self.x // 500).astype(int) * 100000 + (self.y // 500).astype(int)
         meas = (self.g["levels_src"].isin(["label", "label_height", "google"]).to_numpy() if "levels_src" in self.g else np.zeros(len(self.g), bool))
         df = pd.DataFrame({"key": key, "lat": self.lat, "lon": self.lon, "ds": ds, "risk": risk,
-                           "heavy": cat >= 2, "severe": cat == 3, "collapse": p[:, 3], "pga": pga, "measured": meas})
+                           "heavy": cat >= 2, "severe": cat == 3, "collapse": p[:, 3], "pga": value, "measured": meas})
         c = df.groupby("key").agg(lat=("lat", "mean"), lon=("lon", "mean"), n=("ds", "size"),
                                   heavy=("heavy", "sum"), severe=("severe", "sum"), risk=("risk", "sum"),
                                   collapse=("collapse", "sum"), mean_ds=("ds", "mean"), pga=("pga", "mean"), measured=("measured", "mean"))
-        c["dist_km"] = haversine(lat, lon, c.lat.to_numpy(), c.lon.to_numpy())
+        org = hazard.origin(params)
+        c["dist_km"] = haversine(org[0], org[1], c.lat.to_numpy(), c.lon.to_numpy()) if org else np.nan
         c = c.sort_values("risk", ascending=False)
         c["rank"] = 0
         c.iloc[:8, c.columns.get_loc("rank")] = np.arange(1, min(8, len(c)) + 1)
@@ -199,22 +196,16 @@ class Model:
                   "geometry": {"type": "Point", "coordinates": [r.lon, r.lat]},
                   "properties": {"n": int(r.n), "heavy": int(r.heavy), "severe": int(r.severe),
                                  "risk": int(round(r.risk)), "collapse": round(float(r.collapse), 1),
-                                 "mean_ds": round(float(r.mean_ds), 2), "pga": round(float(r.pga), 3),
-                                 "dist_km": round(float(r.dist_km), 1), "rank": int(r.rank), "measured": round(float(r.measured), 2)}}
+                                 "mean_ds": round(float(r.mean_ds), 2), hazard.cell_key: round(float(r.pga), 3),
+                                 "dist_km": round(float(r.dist_km), 1) if org else None, "rank": int(r.rank), "measured": round(float(r.measured), 2)}}
                  for r in c.itertuples()]
-        cas_tot, _ = casualty.casualties(pga, self.W, occ, FRAG, BETA, TYPES, *self._cas)
-        cas = casualty.summary(cas_tot, casualty.pager_deaths(mmi_from_pga(pga), occ, self._cas[1]), self._cas[1])
         self.last, self.run_id, self.cells = g, next(_RUNS), feats
-        self.scenario = {"lat": lat, "lon": lon, "depth_km": depth_km, "mag": mag, "time_of_day": time_of_day, "strike": strike, "dip": dip, "rake": rake}
-        out = {"run": self.run_id, "cells": {"type": "FeatureCollection", "features": feats},
-                "rupture": self._rupture_geojson(lat, lon, geo),
-                "summary": {"buildings": len(g), "severe": int((cat == 3).sum()), "heavy": int((cat >= 2).sum()),
-                            "people_at_risk": int(round(risk.sum())), "max_pga": round(float(pga.max()), 3), "max_mmi": round(float(mmi_from_pga(pga.max())), 1),
-                            "vs30_median": int(np.median(self.vs30)), "soil": self.soil,
-                            "expected_collapses": int(round(p[:, 3].sum())), "time_of_day": time_of_day,
-                            "people_total": int(round(occ.sum())), "distance_method": geo["method"],
-                            "casualties": cas, "mechanism": geo["mech"], "ztor_km": round(geo["ztor_km"], 1), "gm_region": gm["region"],
-                            "gm_models": gm["models"], "beyond_validity": gm["beyond_validity"], **self._data_notes()}}
+        self.hazard = hazard.name
+        self.scenario = {"hazard": hazard.name, "time_of_day": time_of_day, **{k: v for k, v in params.items() if k != "pga_override" and (np.isscalar(v) or v is None)}}
+        summary = {"buildings": len(g), "severe": int((cat == 3).sum()), "heavy": int((cat >= 2).sum()),
+                   "people_at_risk": int(round(risk.sum())), "expected_collapses": int(round(p[:, 3].sum())), "time_of_day": time_of_day,
+                   "people_total": int(round(occ.sum())), "hazard": hazard.name, **hazard.summary(self, inten, p, occ), **self._data_notes()}
+        out = {"run": self.run_id, "cells": {"type": "FeatureCollection", "features": feats}, **hazard.extra_output(self, params, inten), "summary": summary}
         self.summary = out["summary"]
         return out
 

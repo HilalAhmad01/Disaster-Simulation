@@ -1,5 +1,5 @@
 import os, pathlib, time, threading
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
@@ -8,7 +8,7 @@ from overture import fetch_buildings, latest_release
 from places import reverse_name
 from areas import Registry
 from jobs import Jobs
-import exposure, responder_layer, report, confidence
+import exposure, responder_layer, report, confidence, hazards, re
 import base64
 
 here = pathlib.Path(__file__).resolve().parent
@@ -27,6 +27,21 @@ class Quake(BaseModel):
     dip: float | None = Field(None, gt=0, le=90)
     rake: float | None = Field(None, ge=-180, le=180)
     uncertainty: bool = True
+
+class CycloneIn(BaseModel):
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+    heading_deg: float = Field(0, ge=0, lt=360)          # direction of travel, degrees clockwise from north
+    speed_ms: float = Field(5, ge=0, le=30)              # translation speed
+    dp_hpa: float = Field(60, ge=5, le=150)              # central pressure deficit
+    rmax_km: float = Field(40, ge=5, le=200)             # radius of maximum winds
+    track_km: float = Field(400, ge=50, le=1500)         # track length each side of the point
+    time_of_day: str = Field("night", pattern="^(night|day|commute)$")
+
+class FloodIn(BaseModel):
+    raster: str = Field(min_length=1, max_length=80)     # name of an uploaded depth raster
+    scale: float = Field(1.0, gt=0, le=10)               # depth multiplier (e.g. climate or what-if factor)
+    time_of_day: str = Field("night", pattern="^(night|day|commute)$")
 
 class Teams(BaseModel):
     fire_station: int = Field(0, ge=0, le=50)
@@ -308,6 +323,56 @@ def create_app(data_dir=None):
             return {"assignments": res}
         except ValueError as ex:
             raise HTTPException(409, str(ex))
+
+    # ---- other hazards (Phase 7) ----
+    HZ = hazards.registry()
+    MAX_RASTER = 300_000_000
+
+    def flood_dir():
+        d = st.data / "hazards" / "flood"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    @app.get("/api/hazards")
+    def hazard_list():
+        return {"hazards": [h.describe() for h in HZ.values()], "flood_rasters": sorted(p.stem for p in flood_dir().glob("*.tif"))}
+
+    @app.post("/api/hazard/cyclone")
+    def run_cyclone(q: CycloneIn):
+        out = st.need().run_hazard(HZ["cyclone"], q.model_dump())
+        return JSONResponse(out)
+
+    @app.post("/api/hazard/flood")
+    def run_flood(q: FloodIn):
+        f = flood_dir() / f"{q.raster}.tif"
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", q.raster) or not f.exists():
+            raise HTTPException(404, "Upload a flood depth raster first.")
+        try:
+            out = st.need().run_hazard(HZ["flood"], {"raster": str(f), "scale": q.scale, "time_of_day": q.time_of_day})
+        except ValueError as ex:
+            raise HTTPException(400, str(ex))
+        return JSONResponse(out)
+
+    @app.post("/api/flood/upload")
+    async def flood_upload(request: Request, name: str):
+        """Body = a GeoTIFF of water depth in metres (any CRS, one band). Saved as data/hazards/flood/<name>.tif."""
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,60}", name):
+            raise HTTPException(400, "Use letters, digits, dot, dash or underscore in the name.")
+        body = await request.body()
+        if not body or len(body) > MAX_RASTER:
+            raise HTTPException(400, "Send a GeoTIFF of at most 300 MB.")
+        import rasterio, tempfile
+        with tempfile.NamedTemporaryFile(suffix=".tif", dir=flood_dir(), delete=False) as tmp:
+            tmp.write(body)
+        try:
+            with rasterio.open(tmp.name) as ds:
+                if ds.count < 1 or ds.crs is None:
+                    raise ValueError("The file needs a coordinate system and at least one band.")
+            pathlib.Path(tmp.name).replace(flood_dir() / f"{name}.tif")
+        except Exception as ex:
+            pathlib.Path(tmp.name).unlink(missing_ok=True)
+            raise HTTPException(400, f"Not a readable GeoTIFF: {str(ex)[:100]}")
+        return {"raster": name}
 
     # ---- report export (Phase 6.3) ----
     class Image(BaseModel):
