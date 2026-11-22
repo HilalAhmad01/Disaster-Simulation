@@ -4,6 +4,90 @@ Every change to a model number must be explained here (see MASTER_PLAN.md sectio
 
 ## Unreleased (master-plan implementation)
 
+### Live demo fixes (2026-11-22)
+No model numbers change. A phone that reconnected or reloaded heard the last alert again (each alert now reaches a phone once; ids stay
+unique across restarts). An open SOS now follows its phone when it moves more than 15 m. After a server restart a phone re-sends its open SOS
+with the same details instead of dropping it. Phone location pings no longer rebuild the dispatch list and details (open sections closed and a
+click on Send could be lost). Team suggestions that said "load the streets first" are asked for again once they are loaded. "I'm safe" with an
+open SOS offers to cancel it; an SOS the server rejects is not retried forever; the team route is zoomed to once, not on every update. UI:
+"now ago", long notes, the alert form squeezing the list, toasts instead of browser alerts, a narrower panel on mid-size screens, the demo
+card fades, the phone link is https only when the proxy runs, and the phone keeps its screen awake where the browser allows.
+
+### Dispatch panel, one-tap SOS, phone GPS over https (2026-11-22)
+No model numbers change. The live tools moved out of the left panel into a **Dispatch** panel on the right: calls one per line under Open /
+En route / Done, a detail view with suggested teams (nearest working fire, ambulance/hospital and police stations by driving time around likely
+debris, `GET /api/live/sos/{id}/options`; `assign` takes the chosen `facility_id`), alert and phone-link tools behind buttons. On the phone, SOS
+is sent with one tap (details are optional afterwards), location is asked for on opening, a phone far from the area is moved into it
+automatically for the demo, and placing yourself by hand is only a fallback. `tools/https_proxy.py` serves the app over https on the local
+network (self-signed certificate) so phones share GPS.
+
+### Live demo: phone page, alerts, SOS, safe-place routes (2026-11-22)
+No model numbers change. New `live.py` and `sos.html`, and a **Live: phones and SOS** section on the dashboard (README 6.4.1). Phones that keep
+`/sos` open get alerts sent to a circle on the map, send SOS calls that appear on the dashboard ranked by who is in trouble and the model's
+damage at that building, mark themselves safe, and get a walking route to the nearest working open space or shelter that avoids streets
+likely blocked by debris (plus a Google Maps link). Responders send the nearest working team along the existing debris-aware driving route; the
+phone sees the team and its ETA. In-memory only, no accounts, no push or SMS: a demo of the idea. Tests: `tests/test_live.py`.
+
+### Panel, heat map, 409 after restarts, storeys, downloads (2026-11-22, tester feedback)
+Model numbers change in one place: the storey rules below (exposure method version 4 -> 5, so saved areas are rebuilt from their raw footprints the first time they are opened).
+- **Storeys.** (1) A mapped floor count or height of 8 storeys or more is checked against the satellite height. If they differ by more than 2x and
+  the satellite height is at least 6 m, the satellite value is used (`levels_src = google_over_label`, counted as measured). Example: a tower mapped
+  as 80 floors / 300 m that the satellite sees at 94 m. (2) No building is taller than 6 times the side of its footprint (floor of 3 storeys).
+  (3) 3D extrusion uses 2.8 m per storey like the model (it was 3 m). Effect on Noida (483k buildings): 86 buildings change storeys (25 rejected labels,
+  61 by the shape cap), people in the area -0.08%. On the baseline area, 2 labels are rejected. This is a small correction, not a new model: the largest
+  single-building occupancy there (8,428 people) is a tower the satellite does see at 33 storeys, capped at 4,000 people by capacity and scaled by the cell's
+  population factor of 2.1; it may still be a tower that is not finished, which no data in the app can tell.
+- **Route and dispatch 409.** Reproduced: it happens after a server restart (`uvicorn --reload` restarts on every saved .py file), when the open
+  page still shows Route buttons. The server now rebuilds the responder layer from the cached facilities and roads (about 3 s) instead of answering
+  "Prepare ... first"; a lost simulation answers 409 "Run the simulation again"; route, dispatch and access carry the page's run number so a stale page
+  is told so. Errors are typed (no more guessing the status from the words in the message): not found 404, dispatch with no usable facility 422.
+  The page shows the reason where the user is looking and recovers (an unprepared server hides the responder tools again).
+- **Heat map.** The yellow cloud (blurred discs coloured by each 500 m cell's mean damage state, which sits in the middle everywhere) is replaced by a
+  heat map on a 100-500 m grid (about 12,000 squares per area): mean chance of heavy damage on an absolute scale (green 0% to red 60% or more), or people
+  at risk relative to the busiest places, switched in the legend. It fades out as individual buildings appear. The 500 m cells remain for priorities,
+  routes and dispatch. New summary figure "Buildings likely heavily damaged" (sum of P(extensive or worse)); the old "Severe damage" count (expected
+  damage state at least 2.5) read 0 next to 1,905 expected collapses and moved to "More numbers".
+- **Panel.** Drag the edge to resize (300 px to 60% of the window, remembered, double-click resets, arrow keys work), a button hides it; every group folds
+  and remembers its state; the summary keeps the five or six figures people act on with ranges beneath them, the rest folds; tabs and priority rows no
+  longer truncate text; long explanations became tooltips. Everything that explains colours (damage, buildings, facilities with on/off switches,
+  access minutes, route, warning time) is one legend on the map showing only what is on screen.
+- **Dark mode.** The dark panel no longer darkens the street map; the street map has its own Light/Dark switch (dimmed OpenStreetMap tiles; dark tile
+  services now require an API key).
+- **Overlapping popups.** One popup at a time; a facility dot wins over the building under it; priority pins no longer open their own popup but go
+  through the same manager and sit under it; pins that collide at a zoom level are fanned out around their true place. Clinics, shelters, schools and
+  open spaces start hidden (switchable in the legend).
+- **"Finding hospitals, fire stations and shelters" took too long.** Measured on Delhi core (34 x 33 km, never prepared before): the OpenStreetMap
+  facility query 34 s, the Overture places read 31 s (one request at a time), and the road network download on top, all one after the other.
+  Now the facilities and the places run at the same time and the street query is cut into tiles of about 10 km fetched two at a time (a single query
+  over a 25 x 26 km city failed on two public servers after 1 and 6 minutes). Nothing is downloaded unless the button is pressed; an automatic
+  background fetch was tried and removed because the street files of a big city are hundreds of MB.
+
+- **3D pins and orbit.** At a low viewing angle the round priority pin sat on the ground point but looked like it hung on a tower's wall. Pins are now
+  teardrops whose tip is the exact spot (checked at pitch 60 and 75, also while turning), re-fanned after tilt and rotation. New **Orbit view** (Map tab):
+  turns the 3D view around the middle of the map at 3, 6 or 12 degrees a second (tilts into 3D first); dragging the map, Esc, "Back to 2D", or loading a
+  new area stops it, zooming does not.
+- **Downloads.** Overture row groups are fetched 8 at a time (6 parts: 11.3 s -> 6.5 s; `OVERTURE_THREADS` changes it), streets and facilities of a freshly
+  downloaded area are fetched in the background so "Show hospitals" finds them cached, and the road and facility downloads fall back to two more public
+  Overpass mirrors. Rotating IP addresses to get around the Overpass limits is deliberately not done: it breaks their usage policy and the slow part is
+  the Overture reads, which have no per-address limit.
+
+### Route 409, loading time, side panel (2026-11-21, tester feedback)
+No model numbers change (Monte Carlo output is bit-identical for any thread count; blockage is identical with the cached street matching).
+- **Route no longer fails with 409.** `/api/route` and `/api/dispatch` refused ("Compute access for this simulation first.") until
+  "Estimate hospital access" had been pressed for that very run, but the Route buttons appeared as soon as facilities loaded. Access is now
+  computed on demand (`Layer.ensure_access`, one computation per run shared by concurrent callers), and the page starts it itself with progress
+  ("Estimating hospital access … first") before routing or dispatching.
+- **Faster:** "Show hospitals, fire stations and roads" on a cached area 33 s -> 2.5 s on Noida (the built road graph is kept as
+  `data/roads/<area>.net.pkl`, the street-building matching for debris blockage as `<area>.streets.npz`; both rebuild when their inputs change).
+  Access for each later run 8.4 s -> 1.0 s (the matching was redone every run). Uncertainty ranges 30 s -> 23 s (realisations on 2 threads,
+  random draws kept in the original order). Uncertainty and tile cutting run in their own job lanes, so responder and access jobs no longer queue
+  behind them.
+- **Side panel:** results are split into tabs (Summary, Priorities, Responders, Map), so turning tools on no longer makes one 4,500 px column.
+  The legend moved onto the map (with facility colours once responders are shown; folded by default on phones); priority rows are one name line
+  plus one number line with a small Route button, and the route picker and route result sit next to them; the dispatch table is a readable
+  list; routine data notes fold away under "Data sources and caveats" while real warnings stay visible; a dot marks a tab with new results.
+  Unnamed facilities read "unnamed fire station", not "fire_station".
+
 ### Bug, UI and performance pass (2026-11-21)
 No model numbers change (people-at-risk ranges are bit-identical; casualty totals in the Monte Carlo differ only by summation order).
 - **Monte Carlo 60 s -> 31 s on Noida (483k buildings).** Each realisation evaluated every fragility curve twice (damage and casualties) and

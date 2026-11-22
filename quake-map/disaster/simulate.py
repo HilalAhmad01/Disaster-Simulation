@@ -192,7 +192,7 @@ class Model:
             g[k] = p[:, i].round(3)
 
         key = (self.x // 500).astype(int) * 100000 + (self.y // 500).astype(int)
-        meas = (self.g["levels_src"].isin(["label", "label_height", "google"]).to_numpy() if "levels_src" in self.g else np.zeros(len(self.g), bool))
+        meas = (self.g["levels_src"].isin(["label", "label_height", "google", "google_over_label"]).to_numpy() if "levels_src" in self.g else np.zeros(len(self.g), bool))
         df = pd.DataFrame({"key": key, "lat": self.lat, "lon": self.lon, "ds": ds, "risk": risk,
                            "heavy": cat >= 2, "severe": cat == 3, "collapse": p[:, 3], "pga": value, "measured": meas})
         c = df.groupby("key").agg(lat=("lat", "mean"), lon=("lon", "mean"), n=("ds", "size"),
@@ -210,15 +210,32 @@ class Model:
                                  "mean_ds": round(float(r.mean_ds), 2), hazard.cell_key: round(float(r.pga), 3),
                                  "dist_km": round(float(r.dist_km), 1) if org else None, "rank": int(r.rank), "measured": round(float(r.measured), 2)}}
                  for r in c.itertuples()]
+        heat = self._heat_grid(p[:, 2], risk)
         self.last, self.run_id, self.cells = g, next(_RUNS), feats
         self.hazard = hazard.name
         self.scenario = {"hazard": hazard.name, "time_of_day": time_of_day, **{k: v for k, v in params.items() if k != "pga_override" and (np.isscalar(v) or v is None)}}
-        summary = {"buildings": len(g), "severe": int((cat == 3).sum()), "heavy": int((cat >= 2).sum()),
+        summary = {"buildings": len(g), "severe": int((cat == 3).sum()), "heavy": int((cat >= 2).sum()), "expected_heavy": int(round(p[:, 2].sum())),
                    "people_at_risk": int(round(risk.sum())), "expected_collapses": int(round(p[:, 3].sum())), "time_of_day": time_of_day,
                    "people_total": int(round(occ.sum())), "hazard": hazard.name, **hazard.summary(self, inten, p, occ), **self._data_notes()}
-        out = {"run": self.run_id, "cells": {"type": "FeatureCollection", "features": feats}, **hazard.extra_output(self, params, inten), "summary": summary}
+        out = {"run": self.run_id, "cells": {"type": "FeatureCollection", "features": feats}, "heat": heat, **hazard.extra_output(self, params, inten), "summary": summary}
         self.summary = out["summary"]
         return out
+
+    HEAT_POINTS = 12000      # about this many grid points cover the area: enough for a smooth surface, small enough to send with every run
+
+    def _heat_grid(self, p_ext, risk):
+        """Fine grid for the damage heat map: per square (100 to 500 m, chosen so the area has about HEAT_POINTS of them) the mean chance
+        of heavy damage `pe`, the people at risk `r` and the building count `n`. The 500 m priority cells stay as they are (ranking,
+        routes); this grid only draws the surface, so one big building cannot wash out a whole neighbourhood."""
+        ext = max((self.x.max() - self.x.min()) * (self.y.max() - self.y.min()), 1.0)
+        sp = float(np.clip(np.ceil(np.sqrt(ext / self.HEAT_POINTS) / 50.0) * 50.0, 100.0, 500.0))
+        key = (self.x // sp).astype(np.int64) * 1_000_000 + (self.y // sp).astype(np.int64)
+        d = pd.DataFrame({"key": key, "lat": self.lat, "lon": self.lon, "pe": p_ext, "r": risk})
+        c = d.groupby("key").agg(lat=("lat", "mean"), lon=("lon", "mean"), pe=("pe", "mean"), r=("r", "sum"), n=("pe", "size"))
+        feats = [{"type": "Feature", "geometry": {"type": "Point", "coordinates": [round(float(a), 5), round(float(b), 5)]},
+                  "properties": {"pe": round(float(pe), 3), "r": round(float(r), 1), "n": int(n)}}
+                 for a, b, pe, r, n in zip(c.lon.to_numpy(), c.lat.to_numpy(), c.pe.to_numpy(), c.r.to_numpy(), c.n.to_numpy())]
+        return {"type": "FeatureCollection", "features": feats, "spacing_m": sp}
 
     def correlation_field(self, b_km=8.5):
         """Cached spatially correlated field generator for this area (Cholesky built once per range b)."""

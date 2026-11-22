@@ -35,8 +35,11 @@ class Job:
         return d
 
 class Jobs:
-    def __init__(self, workers=2, keep=200):
+    def __init__(self, workers=2, keep=200, lanes=None):
+        """lanes: {kind: workers} gives those job kinds their own worker threads, so long background work (Monte Carlo
+        ranges, tile cutting) never makes an interactive job (area, responders, access) wait in the queue behind it."""
         self._pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="job")
+        self._lanes = {k: ThreadPoolExecutor(max_workers=n, thread_name_prefix=f"job-{k}") for k, n in (lanes or {}).items()}
         self._jobs, self._ids, self._lock, self._keep = {}, itertools.count(1), threading.Lock(), keep
 
     def submit(self, kind, fn, *args, **kw):
@@ -63,7 +66,7 @@ class Jobs:
                 job.state, job.error = "error", getattr(ex, "detail", None) or str(ex)[:300] or ex.__class__.__name__
                 job.message = "Failed"
                 traceback.print_exc()
-        self._pool.submit(run)
+        self._lanes.get(kind, self._pool).submit(run)
         return job
 
     def get(self, jid):

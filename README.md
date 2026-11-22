@@ -2,6 +2,8 @@
 
 A city-scale disaster damage estimator that runs in your browser. Describe a scenario (an **earthquake**, a **cyclone** or a **flood**) and an interactive map shows how hard each part of the city is hit, which buildings are likely damaged, how many people are at risk, which neighbourhoods need responders first, and how responders could reach them. You can zoom from the whole city down to individual buildings, in 2D or 3D.
 
+A live demo mode adds the other side of a disaster: people's **phones get alerts, send an SOS with one tap and are routed to the nearest safe place**, and a **Dispatch** panel shows the calls on the damage map, ranks them and sends the nearest working rescue team.
+
 It is built on open data (Overture/OpenStreetMap building footprints, Google Open Buildings heights, GHSL population, USGS soil data) and open, published methods. Uncertainty and data quality are shown, not hidden.
 
 ![Earthquake scenario over Noida: summary panel, damage heat map and numbered priority neighbourhoods](quake-map/disaster/docs/screenshot.jpg)
@@ -22,6 +24,8 @@ It is built on open data (Overture/OpenStreetMap building footprints, Google Ope
 | **Casualties** | Deaths and injuries by severity (Hazus 6.1 rates), with an independent USGS PAGER cross-check. |
 | **Priorities** | The 8 most at-risk neighbourhoods, named from OpenStreetMap. |
 | **Responders** | Hospitals, fire and police stations, shelters (greyed out when their building is likely damaged); the chance debris blocks each street; travel time to the nearest working hospital; routes and a suggested dispatch order. |
+| **Phone SOS and alerts** | A small website for phones (`/sos`): full-screen alerts with sound, one-tap SOS with the phone's GPS, "I'm safe", and a walking route to the nearest safe place that avoids streets debris may block (plus a Google Maps link). |
+| **Dispatch** | A panel next to the map with live SOS calls ranked by priority (trapped, injured, people, and the model's collapse chance for that building), suggested teams with driving times, one-click dispatch, alerts to all phones in a circle, and made-up calls for demos. |
 | **Exports** | PDF report, CSV table and map image. |
 | **Extras** | 3D view, seismic-wave animation with warning times, dark theme, a "How much to trust this" panel. |
 
@@ -83,17 +87,43 @@ The app runs without any of these and says what is missing. Each one replaces a 
 
 After adding a raster, the area rebuilds automatically the next time it loads. The full list, including calibration and validation data, is in the [detailed README](quake-map/disaster/README.md#63-add-data-for-the-best-results-all-optional-the-app-says-what-is-missing).
 
+### Phone demo: SOS, alerts and dispatch
+
+Phones only share their location with **https** pages, so a small proxy serves the app over https on your Wi-Fi. Everything stays on your local network.
+
+```bash
+cd quake-map/disaster && source .venv/bin/activate
+uvicorn app:app --port 8000          # terminal 1: the app (dashboard at http://localhost:8000)
+python tools/https_proxy.py          # terminal 2: prints the phone link, e.g. https://192.168.0.104:8443/sos
+sudo ufw allow 8443/tcp              # once, on Linux with ufw (macOS/Windows: allow Python when the firewall asks)
+```
+
+1. On the dashboard: load an area, **Run simulation**, then **Responders → Show hospitals, fire stations and roads** (safe places and team suggestions need them).
+2. Connect the phone to the **same Wi-Fi** as the laptop and open the printed link, or scan the QR code under **Dispatch → Phone link**.
+3. The first time, the phone warns about the certificate (it is self-signed): **Advanced → Proceed** on Android, **Show details → visit this website** on iPhone. Then **allow location**.
+4. A phone that is not in the simulated city is moved into it automatically for the demo. Tap once anywhere so alarms can make sound.
+5. From the dashboard's **Dispatch** panel: **Send alert** to phones in a circle; SOS calls appear in the list (click one, then **Send** a suggested team); **Demo** adds 20 made-up calls.
+
+If the phone cannot open the link: check it is on the same Wi-Fi, check the firewall, and if it is guest or campus Wi-Fi (which often blocks devices from reaching each other), use the laptop's or a phone's hotspot. If it shows an old page, close the tab and open the link again. The proxy needs the `openssl` command (on Windows, it comes with Git for Windows). Live calls and alerts are kept in memory, so restarting the server clears them; this is a demo, not an emergency service. More in the [detailed README](quake-map/disaster/README.md#641-live-demo-phones-alerts-and-sos).
+
 ### Tests
 
 ```bash
-pytest -q                            # about 150 tests, no network needed
+pytest -q                            # about 170 tests, no network needed
 ```
 
 ---
 
 ## What's new
 
-### Latest update: bug, UI and performance pass
+### Latest update: phone SOS, alerts and a dispatch panel
+
+- **Phone page (`/sos`)**: asks for location on opening, one-tap SOS (details optional afterwards), full-screen alerts with sound and vibration, "I'm safe", and a walking route to the nearest working open space or shelter around streets likely blocked by debris, with a Google Maps link. An open SOS follows the phone as it moves and survives a server restart.
+- **Dispatch panel** on the right of the map: calls under Open / En route / Done, ranked by priority; each call shows the building's modelled collapse chance and the nearest working fire, ambulance and police teams with driving times; **Send** routes the team and the phone sees it coming with an ETA.
+- **Alerts** to every phone inside a circle on the map; a phone that connects inside it soon after still gets it, once.
+- **`tools/https_proxy.py`** serves the app over https on the local network so phones can share GPS (self-signed certificate).
+
+### Previous update: bug, UI and performance pass
 
 No model numbers changed: the uncertainty ranges are identical to before.
 
@@ -160,8 +190,9 @@ quake-map/disaster/
   uncertainty.py           Monte Carlo ranges
   responder_layer.py …     facilities, roads, access, routes, dispatch
   report.py                PDF and CSV export
+  live.py, sos.html        live demo: phone page, alerts, SOS calls, dispatch
   priors/                  shipped tables (fragility, casualty rates, census, occupancy)
-  tools/                   data downloads, calibration, validation, baselines
+  tools/                   data downloads, calibration, validation, baselines, https_proxy.py (phones)
   tests/                   test suite
   docs/                    method notes, validation and calibration reports
   data/                    your downloaded data (not in git)

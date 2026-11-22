@@ -74,3 +74,30 @@ def test_weak_quake_blocks_nothing_and_everything_is_reachable(layer):
     m.run(lat0 + 2.0, lon0 + 2.0, 10, 5.0)                 # far and small
     a = L.compute_access(n=10, seed=0)
     assert a["p_edge"].max() == 0 and a["summary"]["share_no_access"] == 0 and a["summary"]["streets_likely_blocked"] == 0
+
+def test_route_and_dispatch_compute_access_when_it_is_missing(layer):
+    """Routing used to fail ('Compute access for this simulation first', HTTP 409) unless access had been run for that run."""
+    L, m, (lon0, lat0) = layer
+    m.run(lat0 + 0.004, lon0 + 0.004, 8, 7.6)
+    assert m.run_id not in L.access
+    gj = L.route("nearest:fire_station", 1)
+    assert gj["geometry"]["type"] == "LineString" and m.run_id in L.access
+    first = L.access[m.run_id]
+    assert L.dispatch({"fire_station": 1}) and L.access[m.run_id] is first          # reused, not recomputed
+    m.run(lat0 + 0.002, lon0 + 0.002, 8, 7.0)                                         # a new run needs (and gets) its own
+    L.route("nearest:fire_station", 1)
+    assert m.run_id in L.access and L.access[m.run_id] is not first
+
+def test_cached_street_matching_gives_the_same_blockage(layer, tmp_path):
+    L, m, (lon0, lat0) = layer
+    m.run(lat0 + 0.004, lon0 + 0.004, 8, 7.6)
+    import simulate as S
+    h = m.last["levels"].to_numpy(float) * R.STOREY_M
+    args = (h, m.last["p_collapse"].to_numpy(float), m.last["p_extensive"].to_numpy(float))
+    direct = R.blockage(L.net, L._building_geoms_utm(), *args, p_masonry=m.W[:, S.TYPES.index("URM")])
+    cache = tmp_path / "streets.npz"
+    L.match_streets(cache)
+    assert cache.exists() and np.array_equal(L.blockage(), direct)
+    L2 = RL.Layer(m, L.net, L.fac)
+    L2.match_streets(cache)                                                           # loaded from the file this time
+    assert np.array_equal(L2.blockage(), direct)

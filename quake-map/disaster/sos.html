@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#171717">
+<title>Emergency help</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%23d7263d'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#fafafa;--surface:#fff;--raised:#f4f4f5;--line:rgba(23,23,23,.1);--line-2:rgba(23,23,23,.18);--ink:#171717;--text2:#525252;--muted:#737373;
+  --red:#d7263d;--red-ink:#fff;--grn:#2e8b57;--blu:#2c6ad8;--org:#e67e22;--sans:'IBM Plex Sans',system-ui,sans-serif;--mono:'IBM Plex Mono',ui-monospace,monospace;color-scheme:light}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#111112;--surface:#19191b;--raised:#232325;--line:rgba(237,237,237,.1);--line-2:rgba(237,237,237,.18);--ink:#ededed;--text2:#a1a1a6;--muted:#85858b;--red:#e5484d;color-scheme:dark}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}[hidden]{display:none!important}
+html,body{margin:0;height:100%}
+body{font:400 15px/22px var(--sans);color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased;display:flex;flex-direction:column;overflow:hidden}
+header{display:flex;align-items:center;gap:8px;padding:calc(10px + env(safe-area-inset-top)) 16px 10px;background:var(--surface);border-bottom:1px solid var(--line);flex:none}
+header h1{font:600 16px/22px var(--sans);margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conn{display:flex;align-items:center;gap:6px;font:500 12px/16px var(--sans);color:var(--muted);white-space:nowrap}
+.conn i{width:8px;height:8px;border-radius:50%;background:var(--muted)}.conn.on i{background:var(--grn)}.conn.off i{background:var(--red)}
+#map{flex:1 1 40%;min-height:180px;position:relative;background:#e9e9e9}
+#mapHint{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:3;background:var(--ink);color:var(--bg);font:500 13px/18px var(--sans);padding:8px 12px;border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.25);white-space:nowrap}
+main{flex:none;max-height:62%;overflow-y:auto;overscroll-behavior:contain;padding:12px 16px calc(16px + env(safe-area-inset-bottom));background:var(--bg);border-top:1px solid var(--line)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:12px}
+.card h2{font:600 15px/20px var(--sans);margin:0 0 2px}.card p{margin:2px 0 0;color:var(--text2);font-size:14px;line-height:20px}
+.card.warn{border-color:var(--org)}.card.ok{border-color:var(--grn)}.card.bad{border-color:var(--red)}
+.row{display:flex;gap:8px}.row>*{flex:1;min-width:0}
+button,.btn{appearance:none;display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:48px;margin:8px 0 0;padding:0 16px;border-radius:12px;border:1px solid var(--line-2);
+  background:var(--raised);color:var(--ink);font:500 15px/20px var(--sans);text-decoration:none;cursor:pointer;transition:transform .1s,background-color .15s}
+button:active,.btn:active{transform:scale(.98)}button:disabled{opacity:.5}
+button.pri,.btn.pri{background:var(--ink);color:var(--bg);border-color:transparent}
+button.go{background:var(--grn);color:#fff;border-color:transparent}
+.sm{min-height:36px;font-size:13px;border-radius:10px;margin-top:8px}
+#sosBtn{width:156px;height:156px;min-height:0;margin:4px auto 4px;border-radius:50%;background:var(--red);color:var(--red-ink);border:6px solid color-mix(in srgb,var(--red) 30%,transparent);
+  flex-direction:column;gap:0;font:600 40px/44px var(--sans);letter-spacing:.04em;box-shadow:0 6px 24px color-mix(in srgb,var(--red) 40%,transparent)}
+#sosBtn small{font:500 12px/16px var(--sans);letter-spacing:0;opacity:.9}
+.lead{text-align:center;color:var(--muted);font-size:13px;margin:0 0 4px}
+.stat{display:flex;align-items:center;gap:10px}.stat .dot{width:10px;height:10px;border-radius:50%;flex:none;background:var(--muted)}
+.stat.new .dot{background:var(--red);animation:pulse 1.4s infinite}.stat.assigned .dot{background:var(--org);animation:pulse 1.4s infinite}.stat.resolved .dot{background:var(--grn)}
+@keyframes pulse{50%{opacity:.3}}
+.facts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.facts span{font:500 12px/16px var(--sans);background:var(--raised);border:1px solid var(--line);padding:4px 8px;border-radius:999px;color:var(--text2)}
+.facts span.r{color:var(--red);border-color:color-mix(in srgb,var(--red) 40%,transparent)}
+/* bottom sheet for the SOS form */
+.sheet{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.45);display:flex;align-items:flex-end}
+.sheet>div{width:100%;max-height:92%;overflow-y:auto;background:var(--surface);border-radius:20px 20px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom))}
+.sheet h2{font:600 18px/24px var(--sans);margin:0 0 4px}
+.tog{display:flex;align-items:center;gap:12px;min-height:52px;padding:0 14px;margin-top:8px;border:1px solid var(--line-2);border-radius:12px;font:500 15px/20px var(--sans);cursor:pointer;user-select:none}
+.tog input{width:22px;height:22px;accent-color:var(--red);flex:none;margin:0}
+.tog:has(input:checked){border-color:var(--red);background:color-mix(in srgb,var(--red) 8%,transparent)}
+.step{display:flex;align-items:center;gap:12px;margin-top:8px;min-height:52px;padding:0 6px 0 14px;border:1px solid var(--line-2);border-radius:12px}
+.step span{flex:1;font-weight:500}.step b{font:500 18px/24px var(--mono);min-width:28px;text-align:center}
+.step button{width:44px;min-height:40px;margin:0;padding:0;font-size:20px}
+textarea{width:100%;margin-top:8px;min-height:64px;padding:10px 12px;border:1px solid var(--line-2);border-radius:12px;font:400 15px/20px var(--sans);background:var(--surface);color:var(--ink);resize:vertical}
+/* full-screen alert */
+#alert{position:fixed;inset:0;z-index:30;background:var(--red);color:#fff;display:flex;flex-direction:column;padding:calc(24px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom));overflow-y:auto}
+#alert.warning{background:#b45309}
+#alert .ico{width:64px;height:64px;border-radius:50%;border:3px solid #fff;display:grid;place-items:center;font:600 36px/1 var(--sans);margin-bottom:16px;animation:pulse 1s infinite}
+#alert h2{font:600 28px/34px var(--sans);margin:0 0 8px;text-transform:uppercase;letter-spacing:.02em}
+#alert p{font:400 18px/26px var(--sans);margin:0 0 8px}#alert .meta{font-size:14px;opacity:.85}
+#alert .sp{flex:1;min-height:16px}
+#alert button{background:#fff;color:#171717;border:0;min-height:56px;font-size:17px}#alert button.ghost{background:transparent;color:#fff;border:1.5px solid rgba(255,255,255,.7)}
+#soundTip{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);z-index:3;background:rgba(23,23,23,.85);color:#fff;font:500 12px/16px var(--sans);padding:6px 12px;border-radius:999px;white-space:nowrap;pointer-events:none}
+.fine{font-size:12px;line-height:16px;color:var(--muted);margin-top:12px}
+.card a{color:inherit;font-weight:500}
+.me{width:18px;height:18px;border-radius:50%;background:var(--blu);border:3px solid #fff;box-shadow:0 0 0 6px rgba(44,106,216,.25),0 1px 4px rgba(0,0,0,.4)}
+.me.demo{background:#7c3aed;box-shadow:0 0 0 6px rgba(124,58,237,.25),0 1px 4px rgba(0,0,0,.4)}
+.dest{width:22px;height:22px;border-radius:6px;background:var(--grn);border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);transform:rotate(45deg)}
+.maplibregl-ctrl-attrib{font-size:10px}
+</style></head><body>
+<header><h1 id="title">Emergency help</h1><span class="conn" id="conn"><i></i><span>Connecting</span></span></header>
+<div id="map"><div id="mapHint" hidden>Tap the map where you are</div><div id="soundTip">Tap anywhere to turn on alarm sound</div></div>
+<main>
+  <div class="card warn" id="locCard" hidden><h2 id="locT">Finding your location…</h2><p id="locP"></p>
+    <div class="row" id="locBtns" hidden><button class="sm" id="retryLoc" type="button">Try again</button><button class="sm" id="placeMe" type="button">Mark me on the map</button></div></div>
+  <div class="card" id="sosCard" hidden><div class="stat" id="sosStat"><span class="dot"></span><h2 id="sosT">SOS sent</h2></div><p id="sosP"></p><div class="facts" id="sosFacts"></div>
+    <div class="row"><button class="sm" id="sosEdit" type="button">Add details</button><button class="sm" id="sosCancel" type="button">I no longer need help</button></div></div>
+  <div id="sosWrap"><p class="lead">One tap sends your location to responders</p>
+    <button id="sosBtn" type="button" aria-label="Send SOS now">SOS<small>Tap for help</small></button></div>
+  <div class="row"><button id="safeBtn" type="button">I'm safe</button><button class="go" id="routeBtn" type="button">Way to safety</button></div>
+  <div class="card ok" id="routeCard" hidden style="margin-top:12px"><h2 id="routeT"></h2><p id="routeP"></p>
+    <a class="btn pri" id="gmaps" target="_blank" rel="noopener">Open in Google Maps</a></div>
+  <p class="fine" id="foot"><span id="demoNote" hidden>Your position is moved into the simulated city for this demo. </span>Demo only. In a real emergency call <b>112</b>. Alerts reach this phone only while this page is open. Your location is shared with the responders of this demo only.</p>
+</main>
+<div class="sheet" id="sheet" hidden><div role="dialog" aria-modal="true" aria-labelledby="sheetT">
+  <h2 id="sheetT">SOS sent</h2><p class="fine" style="margin-top:0" id="sheetP">Responders can see where you are. If you can, tell them more:</p>
+  <label class="tog"><input type="checkbox" id="fTrapped"> Someone is trapped</label>
+  <label class="tog"><input type="checkbox" id="fInjured"> Someone is injured</label>
+  <div class="step"><span>People with you</span><button type="button" id="pMinus" aria-label="Fewer">−</button><b id="pN">1</b><button type="button" id="pPlus" aria-label="More">+</button></div>
+  <textarea id="fNote" maxlength="280" placeholder="Anything else (optional): floor, landmark, medical need"></textarea>
+  <button class="pri" id="send" type="button" style="background:var(--red);min-height:56px;font-size:17px">Update my SOS</button>
+  <button id="sheetX" type="button">Done</button><p class="fine" id="sendMsg"></p>
+</div></div>
+<div id="alert" hidden role="alertdialog" aria-labelledby="alT"><div class="ico">!</div><h2 id="alT">Alert</h2><p id="alM"></p><p class="meta" id="alMeta"></p>
+  <div class="sp"></div><button id="alRoute" type="button">Show me the way to safety</button><button id="alSafe" type="button" class="ghost">I'm safe</button><button id="alSos" type="button" class="ghost">I need help (SOS)</button><button id="alX" type="button" class="ghost">Dismiss</button></div>
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+const $=id=>document.getElementById(id), EMPTY={type:'FeatureCollection',features:[]};
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+let dev=store.get('sos-device')||'';
+if(!/^[A-Za-z0-9_-]{4,64}$/.test(dev)){dev='p'+Math.random().toString(36).slice(2,12)+Date.now().toString(36);store.set('sos-device',dev)}
+let map,me,dest,area=null,pos=null,gps=null,shift=null,manual=false,placing=false,ws=null,wsUp=false,mySos=null,safe=false,people=1,audio=null,lastSent=0,pendingSos=false,watchId=null;
+const KIND={open_space:'Open ground',shelter:'Shelter',school:'School (shelter)'};
+function circle(lon,lat,km,n=64){const c=[];for(let i=0;i<=n;i++){const a=i/n*2*Math.PI;c.push([lon+km/(111.32*Math.cos(lat*Math.PI/180))*Math.cos(a),lat+km/110.54*Math.sin(a)])}return{type:'Feature',geometry:{type:'Polygon',coordinates:[c]}}}
+const inside=(p,b)=>b&&p.lon>=b[0]&&p.lon<=b[2]&&p.lat>=b[1]&&p.lat<=b[3];
+const kmBetween=(a,b)=>Math.hypot((a.lon-b.lon)*111.32*Math.cos(a.lat*Math.PI/180),(a.lat-b.lat)*110.54);
+
+// sound and vibration need one tap on the page first (browser rule); any tap counts, including the SOS button
+function unlock(){if(audio)return;try{audio=new (window.AudioContext||window.webkitAudioContext)();audio.resume()}catch(e){}$('soundTip').hidden=true}
+['pointerdown','touchstart','keydown'].forEach(ev=>addEventListener(ev,unlock,{once:true,passive:true}));
+let wake=null;async function keepAwake(){try{if('wakeLock' in navigator&&document.visibilityState==='visible'&&!wake){wake=await navigator.wakeLock.request('screen');wake.addEventListener('release',()=>wake=null)}}catch(e){}}
+document.addEventListener('visibilitychange',keepAwake);addEventListener('pointerdown',keepAwake,{once:true});keepAwake();
+
+// ---------- start right away: map, live connection, location prompt ----------
+(async function boot(){
+  try{area=await (await fetch('/api/live/area')).json()}catch(e){area={loaded:false}}
+  if(area.loaded)$('title').textContent='Emergency help · '+area.name;
+  map=new maplibregl.Map({container:'map',center:area.loaded?area.center:[77.39,28.57],zoom:area.loaded?12:4,attributionControl:{compact:true},
+    style:{version:8,sources:{osm:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OpenStreetMap contributors'}},
+    layers:[{id:'osm',type:'raster',source:'osm',paint:{'raster-saturation':-0.5}}]}});
+  map.on('load',()=>{
+    for(const s of ['alertArea','safe','team'])map.addSource(s,{type:'geojson',data:EMPTY});
+    map.addLayer({id:'alert-f',type:'fill',source:'alertArea',paint:{'fill-color':'#d7263d','fill-opacity':.08}});
+    map.addLayer({id:'alert-l',type:'line',source:'alertArea',paint:{'line-color':'#d7263d','line-width':1.5,'line-dasharray':[3,2]}});
+    map.addLayer({id:'safe-casing',type:'line',source:'safe',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#fff','line-width':8}});
+    map.addLayer({id:'safe-l',type:'line',source:'safe',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#2e8b57','line-width':5}});
+    map.addLayer({id:'team-casing',type:'line',source:'team',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#fff','line-width':7}});
+    map.addLayer({id:'team-l',type:'line',source:'team',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#e67e22','line-width':4}});
+    if(mySos)setSos(mySos);
+  });
+  map.on('click',e=>{if(placing||manual)setManual(e.lngLat.lat,e.lngLat.lng)});
+  connect();locate();
+})();
+
+// ---------- location: the phone's GPS, asked for as soon as the page opens ----------
+function showLoc(title,html,btns,cls){const c=$('locCard');c.hidden=!title;if(!title)return;$('locT').textContent=title;$('locP').innerHTML=html||'';$('locBtns').hidden=!btns;c.className='card '+(cls||'warn')}
+function locate(){
+  if(!window.isSecureContext){
+    const https=`https://${location.hostname}:8443${location.pathname}`;
+    showLoc('Location needs the secure link',`Phones only share location with https pages. <a href="${esc(https)}">Open the secure link</a>, or ask the organisers for it.`,true);return}
+  if(!('geolocation' in navigator)){showLoc('This browser cannot share location','You can mark where you are on the map instead.',true);return}
+  showLoc('Finding your location…','Allow location when your phone asks. It is sent only to responders.',false,'warn');
+  if(watchId!=null)navigator.geolocation.clearWatch(watchId);
+  watchId=navigator.geolocation.watchPosition(onFix,onFixError,{enableHighAccuracy:true,maximumAge:5000,timeout:20000});
+}
+async function onFix(p){
+  if(manual)return;
+  gps={lat:p.coords.latitude,lon:p.coords.longitude,acc:Math.round(p.coords.accuracy)};
+  let q=gps,demo=false;
+  // demo only: a phone far from the simulated city is moved into it once, automatically; moving the phone still moves the dot
+  if(area&&area.loaded&&!inside(gps,area.bounds)){
+    if(!shift){
+      let saved=null;try{saved=JSON.parse(sessionStorage.getItem('sos-shift')||'null')}catch(e){}
+      if(saved&&saved.area===area.name)shift=saved;
+      else{try{const s=await (await fetch('/api/live/demo-spot')).json();shift={dlat:s.lat-gps.lat,dlon:s.lon-gps.lon,area:area.name};try{sessionStorage.setItem('sos-shift',JSON.stringify(shift))}catch(e){}}catch(e){}}
+    }
+    if(shift){q={lat:gps.lat+shift.dlat,lon:gps.lon+shift.dlon,acc:gps.acc};demo=true;
+      if(!onFix.told){onFix.told=true;showLoc('Demo: you are placed in '+area.name,`Your phone is ${Math.round(kmBetween(gps,{lat:area.center[1],lon:area.center[0]}))} km from the simulated city, so your location is moved into it. Walking still moves your dot.`,false,'ok');
+        setTimeout(()=>{if($('locT').textContent.startsWith('Demo:'))showLoc('')},8000)}}
+  }else showLoc('');
+  setPos(q,demo);
+}
+function onFixError(err){
+  if(manual||pos)return;
+  if(err.code===1)showLoc('Location is blocked','Turn location on for this site: tap the icon next to the address bar → <b>Permissions</b> → <b>Location</b> → Allow, then tap Try again. If you cannot, mark where you are on the map.',true,'bad');
+  else showLoc('Still looking for your location…','Move near a window or outside if you can. You can also mark where you are on the map.',true);
+}
+$('retryLoc').onclick=()=>{manual=false;locate()};
+$('placeMe').onclick=()=>{placing=!placing;$('mapHint').hidden=!placing;$('placeMe').textContent=placing?'Cancel':'Mark me on the map'};
+function setManual(lat,lon){manual=true;placing=false;$('mapHint').hidden=true;$('placeMe').textContent='Mark me on the map';setPos({lat,lon,acc:null},true);
+  showLoc('Location marked by hand','Tap the map again to move it, or Try again to use GPS.',true,'ok')}
+function setPos(q,demo){
+  const first=!pos;pos={...q,demo};
+  if(!me){const el=document.createElement('div');el.className='me';me=new maplibregl.Marker({element:el}).setLngLat([q.lon,q.lat]).addTo(map)}else me.setLngLat([q.lon,q.lat]);
+  me.getElement().classList.toggle('demo',!!demo);$('demoNote').hidden=!demo;
+  if(first)map.flyTo({center:[q.lon,q.lat],zoom:15,duration:600});
+  sendLoc(first);
+  if(pendingSos){pendingSos=false;sendSos()}
+}
+function sendLoc(force){if(!pos||!wsUp)return;const t=Date.now();if(!force&&t-lastSent<3000)return;lastSent=t;ws.send(JSON.stringify({type:'loc',lat:pos.lat,lon:pos.lon,acc:pos.acc,demo:pos.demo}))}
+
+// ---------- live connection ----------
+function connect(){
+  const c=$('conn');ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws/live?role=phone&device='+encodeURIComponent(dev));
+  ws.onopen=()=>{wsUp=true;c.className='conn on';c.lastChild.textContent='Connected';sendLoc(true);if(safe)ws.send(JSON.stringify({type:'safe',safe:true}))};
+  ws.onclose=()=>{wsUp=false;c.className='conn off';c.lastChild.textContent='Reconnecting';setTimeout(connect,2000)};
+  ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(_){return}
+    if(m.type==='hello'){
+      // the server forgot an SOS this phone still has open (it restarted): send it again instead of silently dropping it
+      if(!m.sos&&mySos&&mySos.status!=='resolved'&&pos){sendSos();return}
+      setSos(m.sos);if(m.safe)setSafe(true,true)}
+    else if(m.type==='alert')showAlert(m.alert);
+    else if(m.type==='sos')setSos(m.sos)};
+}
+
+// ---------- alerts ----------
+let alarmT=null;
+const shownAlerts=new Set((()=>{try{return JSON.parse(sessionStorage.getItem('sos-alerts')||'[]')}catch(e){return[]}})());
+function showAlert(a){
+  if(shownAlerts.has(a.id))return;                 // never sound the same alert twice
+  shownAlerts.add(a.id);try{sessionStorage.setItem('sos-alerts',JSON.stringify([...shownAlerts].slice(-50)))}catch(e){}
+  const el=$('alert');el.className=a.level==='warning'?'warning':'';el.hidden=false;
+  $('alT').textContent=a.title||'Alert';$('alM').textContent=a.message;
+  $('alMeta').textContent=(a.distance_km!=null?a.distance_km+' km from the alert centre · ':'')+'sent '+new Date(a.sent*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  if(map&&map.getSource('alertArea'))map.getSource('alertArea').setData(circle(a.lon,a.lat,a.radius_km));
+  try{navigator.vibrate&&navigator.vibrate([400,200,400,200,800])}catch(e){}
+  alarm();document.title='⚠ '+(a.title||'Alert');
+}
+function alarm(){if(!audio)return;clearInterval(alarmT);let k=0;const beep=()=>{try{const o=audio.createOscillator(),g=audio.createGain();o.type='square';o.frequency.value=k%2?660:880;g.gain.value=.08;o.connect(g).connect(audio.destination);o.start();o.stop(audio.currentTime+.35)}catch(e){}if(++k>=8)clearInterval(alarmT)};beep();alarmT=setInterval(beep,450)}
+function closeAlert(){$('alert').hidden=true;clearInterval(alarmT);document.title='Emergency help'}
+$('alX').onclick=closeAlert;$('alRoute').onclick=()=>{closeAlert();findRoute()};$('alSafe').onclick=()=>{closeAlert();setSafe(true)};$('alSos').onclick=()=>{closeAlert();sosNow()};
+
+// ---------- I'm safe ----------
+function setSafe(v,quiet){safe=v;$('safeBtn').textContent=v?'Marked safe ✓':"I'm safe";$('safeBtn').style.borderColor=v?'var(--grn)':'';if(!quiet&&wsUp)ws.send(JSON.stringify({type:'safe',safe:v}))}
+$('safeBtn').onclick=async()=>{
+  if(!safe&&mySos&&confirm('Glad you are safe. Cancel your SOS so responders can help others?')){
+    const r=await fetch(`/api/live/sos/${mySos.id}/cancel`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device:dev})});if(r.ok)setSos(await r.json())}
+  setSafe(!safe)};
+
+// ---------- SOS: one tap sends it; details are optional afterwards ----------
+function details(){if(mySos&&$('sheet').hidden)return{trapped:mySos.trapped,injured:mySos.injured,people:mySos.people,note:mySos.note||''};
+  return{trapped:$('fTrapped').checked,injured:$('fInjured').checked,people,note:$('fNote').value}}
+async function sendSos(){
+  const msg=$('sendMsg');
+  try{
+    const r=await fetch('/api/live/sos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device:dev,lat:pos.lat,lon:pos.lon,accuracy_m:pos.acc,demo_location:!!pos.demo,...details()})});
+    if(!r.ok){const e=new Error((await r.json().catch(()=>({}))).detail||'HTTP '+r.status);e.fatal=r.status<500;throw e}
+    setSos(await r.json());setSafe(false,true);msg.textContent='';
+    try{navigator.vibrate&&navigator.vibrate(150)}catch(e){}
+    return true;
+  }catch(e){
+    const why=typeof e.message==='string'&&!/fetch|network/i.test(e.message)?e.message:'no connection';
+    const t=`Could not send (${why}). `+(e.fatal?'Please call 112.':'Retrying… If this keeps failing, call 112.');
+    msg.textContent=t;$('sosCard').hidden=false;$('sosT').textContent='SOS not sent yet';$('sosP').textContent=t;$('sosCard').className='card bad';
+    if(!e.fatal)setTimeout(()=>{if(!mySos)sendSos()},4000);return false;
+  }
+}
+function sosNow(){
+  unlock();
+  $('sheetT').textContent=pos?'SOS sent':'Sending your SOS…';
+  $('sheetP').textContent=pos?'Responders can see where you are. If you can, tell them more:':'Waiting for your location. It is sent the moment it is found. Meanwhile, tell responders more:';
+  $('send').textContent='Update my SOS';$('sendMsg').textContent='';$('pN').textContent=people;$('sheet').hidden=false;
+  if(pos)sendSos();
+  else{pendingSos=true;$('sosCard').hidden=false;$('sosStat').className='stat new';$('sosT').textContent='Sending as soon as your location is found…';$('sosP').textContent='Keep this page open.';$('sosCard').className='card bad';
+    if(!manual&&window.isSecureContext&&navigator.geolocation)navigator.geolocation.getCurrentPosition(onFix,onFixError,{enableHighAccuracy:true,timeout:15000,maximumAge:0})}
+}
+$('sosBtn').onclick=sosNow;
+$('sosEdit').onclick=()=>{if(mySos){$('fTrapped').checked=mySos.trapped;$('fInjured').checked=mySos.injured;people=mySos.people;$('fNote').value=mySos.note||''}
+  $('sheetT').textContent='Your SOS';$('sheetP').textContent='Change anything responders should know:';$('pN').textContent=people;$('sendMsg').textContent='';$('sheet').hidden=false};
+$('sheetX').onclick=()=>$('sheet').hidden=true;
+$('sheet').onclick=e=>{if(e.target===$('sheet'))$('sheet').hidden=true};
+$('pMinus').onclick=()=>{people=Math.max(1,people-1);$('pN').textContent=people};$('pPlus').onclick=()=>{people=Math.min(99,people+1);$('pN').textContent=people};
+$('send').onclick=async()=>{if(!pos){$('sendMsg').textContent='Saved. It goes with your SOS when your location is found.';pendingSos=true;return}
+  const b=$('send');b.disabled=true;$('sendMsg').textContent='Sending…';if(await sendSos()){$('sendMsg').textContent='';$('sheet').hidden=true}b.disabled=false};
+$('sosCancel').onclick=async()=>{if(!mySos||!confirm('Cancel your SOS? Responders will stop coming.'))return;
+  const r=await fetch(`/api/live/sos/${mySos.id}/cancel`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device:dev})});if(r.ok)setSos(await r.json())};
+function setSos(s){
+  mySos=s&&s.status!=='resolved'?s:null;
+  const c=$('sosCard');
+  if(!s){if(!pendingSos)c.hidden=true;$('sosWrap').hidden=false;return}
+  c.hidden=false;$('sosWrap').hidden=s.status!=='resolved';
+  $('sosStat').className='stat '+s.status;
+  const eta=s.eta_min!=null?` · about ${Math.max(1,Math.round(s.eta_min))} min`:'';
+  $('sosT').textContent={new:'SOS sent. Waiting for a team',assigned:'Help is on the way'+eta,resolved:'SOS closed'}[s.status];
+  $('sosP').textContent=s.status==='new'?'Responders can see you on their map. Stay where you are if it is safe, and keep this page open.':
+    s.status==='assigned'?`${s.team||'A team'} is coming to you.${s.route?' Their route is on the map in orange.':''}`:(s.resolution?'This SOS was '+s.resolution+'.':'');
+  $('sosFacts').innerHTML=s.status==='resolved'?'':[s.trapped?'<span class="r">Trapped</span>':'',s.injured?'<span class="r">Injured</span>':'',`<span>${s.people} ${s.people>1?'people':'person'}</span>`,`<span>Priority: ${esc(s.level)}</span>`].join('');
+  $('sosEdit').hidden=$('sosCancel').hidden=s.status==='resolved';
+  c.className='card '+(s.status==='resolved'?'ok':s.status==='assigned'?'warn':'bad');
+  clearTimeout(setSos.t);if(s.status==='resolved')setSos.t=setTimeout(()=>{if(!mySos)c.hidden=true},15000);
+  const rk=s.route&&s.status==='assigned'?s.id+':'+s.team:null,newRoute=rk&&rk!==setSos.rk;setSos.rk=rk;
+  if(map&&map.getSource('team')){map.getSource('team').setData(s.route&&s.status==='assigned'?s.route:EMPTY);
+    if(newRoute){const co=s.route.geometry.coordinates,b=co.reduce((b,p)=>[[Math.min(b[0][0],p[0]),Math.min(b[0][1],p[1])],[Math.max(b[1][0],p[0]),Math.max(b[1][1],p[1])]],[co[0],co[0]]);map.fitBounds(b,{padding:40,maxZoom:16})}}
+  if(newRoute)try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}
+}
+
+// ---------- way to safety ----------
+async function findRoute(){
+  if(!pos){showLoc('Waiting for your location','The route appears as soon as your location is found.',!window.isSecureContext||manual);return}
+  const b=$('routeBtn');b.disabled=true;b.textContent='Finding a route…';const c=$('routeCard');
+  try{
+    const r=await fetch(`/api/live/safe-route?lat=${pos.lat}&lon=${pos.lon}`);const d=await r.json();
+    if(!r.ok)throw new Error(d.detail||'No route');
+    const p=d.properties;map.getSource('safe').setData(d);
+    if(!dest){const el=document.createElement('div');el.className='dest';dest=new maplibregl.Marker({element:el})}
+    dest.setLngLat(p.dest).addTo(map);
+    const co=d.geometry.coordinates,bb=co.reduce((b,q)=>[[Math.min(b[0][0],q[0]),Math.min(b[0][1],q[1])],[Math.max(b[1][0],q[0]),Math.max(b[1][1],q[1])]],[co[0],co[0]]);
+    map.fitBounds(bb,{padding:48,maxZoom:17});
+    $('routeT').textContent=`${p.name} · ${p.distance_m>=1000?(p.distance_m/1000).toFixed(1)+' km':p.distance_m+' m'}, ${p.walk_min} min walk`;
+    $('routeP').innerHTML=`${esc(KIND[p.kind]||p.kind)}. `+(p.hazard==='earthquake'?'Stay away from buildings, walls and power lines on the way. ':'')+
+      (p.risky_streets?`<b>${p.risky_streets} street${p.risky_streets>1?'s':''} on this route may be blocked by debris.</b> `:'The route avoids streets likely blocked by debris. ')+
+      '<br>Google Maps does not know about debris; the green line on this map does.';
+    $('gmaps').href=p.gmaps;$('gmaps').hidden=false;c.className='card ok';c.hidden=false;
+  }catch(e){$('routeT').textContent='No route right now';$('routeP').textContent=e.message;$('gmaps').hidden=true;c.className='card warn';c.hidden=false}
+  b.disabled=false;b.textContent='Way to safety';
+}
+$('routeBtn').onclick=findRoute;
+</script></body></html>

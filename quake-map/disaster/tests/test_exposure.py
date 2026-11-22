@@ -81,6 +81,21 @@ def test_levels_priority_label_over_height_label_over_google_over_guess():
     assert list(d["levels_src"]) == ["label", "label_height", "google", "guess_unstable", "guess"]
     assert list(d["levels"]) == [7, 6, 5, 2, 2]               # unstable & missing fall back to the <150 m2 heuristic (2)
 
+def test_tall_label_the_satellite_contradicts_is_rejected_and_shape_cap_applies():
+    """80 floors / 300 m on a tower the satellite sees at 94 m (planned or still being built) must not stand; ordinary labels do."""
+    import exposure
+    b = _b(num_floors=[80, 30, 4, 12, np.nan], height=[300.0, np.nan, np.nan, np.nan, np.nan])
+    h = pd.DataFrame({"h_google": [93.5, 85.0, 3.0, 20.0, 60.0], "h_spread": [95.0, 4.0, 1.0, 3.0, 2.0]})
+    area = np.array([2400.0, 1500.0, 100.0, 400.0, 6.0])
+    d = exposure.attributes_full(b, area, h)
+    assert list(d["levels_src"]) == ["google_over_label", "label", "label", "label", "google"]
+    # (0) 93.5 m / 2.8 = 33; (1) 30 floors against 85 m (30.4 storeys) agree; (2) low-rise labels are never second-guessed (satellite underreads);
+    # (3) 12 floors against 20 m (7.1 storeys) differ by under 2x: kept
+    assert d["levels"][0] == 33 and d["levels"][1] == 30 and d["levels"][2] == 4
+    assert d["levels"][4] == 2                                  # a 6 m2 footprint is an outbuilding (at most 2 storeys) whatever the satellite says
+    tower = exposure.attributes_full(_b(num_floors=[np.nan]), np.array([40.0]), pd.DataFrame({"h_google": [90.0], "h_spread": [1.0]}))
+    assert tower["levels"][0] == 13                             # 90 m (32 storeys) on a 40 m2 footprint (6.3 m wide): at most 6 x 6.3 m = 38 m = 13 storeys
+
 def test_google_height_too_low_is_unstable_and_no_raster_means_all_guess():
     import exposure
     b = _b(num_floors=[np.nan, np.nan])

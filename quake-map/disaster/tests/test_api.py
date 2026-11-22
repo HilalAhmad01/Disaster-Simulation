@@ -84,7 +84,10 @@ def test_responder_endpoints_flow(client, tmp_path, monkeypatch):
     assert r["state"] == "done" and r["result"]["facilities"]["hospital"] == 2
     assert len(client.get("/api/facilities").json()["features"]) == 3
     assert client.post("/api/access").status_code == 409                          # no simulation yet
+    assert client.get("/api/route", params={"rank": 1}).status_code == 409             # no simulation yet
     d = client.post("/api/simulate", json={"lat": 28.575, "lon": 77.33, "depth_km": 8, "magnitude": 7.4, "uncertainty": False}).json()
+    early = client.get("/api/route", params={"rank": 1, "source": "nearest:fire_station"})   # before "estimate access": used to be 409
+    assert early.status_code == 200 and early.json()["geometry"]["type"] == "LineString"
     j = client.post("/api/access").json()
     r = wait(client, f"/api/jobs/{j['job']}")
     assert r["state"] == "done", r
@@ -96,6 +99,26 @@ def test_responder_endpoints_flow(client, tmp_path, monkeypatch):
     dp = client.post("/api/dispatch", json={"fire_station": 2})
     assert dp.status_code == 200 and 1 <= len(dp.json()["assignments"]) <= 2
     assert client.post("/api/dispatch", json={"fire_station": 99}).status_code == 422
+    # a page that is behind the server (older run number) is told so, not given a stale answer
+    assert client.get("/api/route", params={"rank": 1, "run": d["run"] + 7}).status_code == 409
+    assert client.post("/api/dispatch", json={"fire_station": 1, "run": d["run"] + 7}).status_code == 409
+    assert client.get("/api/route", params={"rank": 1, "run": d["run"]}).status_code == 200
+    # the server restarts (uvicorn --reload on every saved .py file): the page still shows Route buttons. With the facilities and roads
+    # on disk the layer comes back by itself; the simulation is gone, so the answer is a 409 that says to run again, not "prepare first".
+    st.layer = None
+    monkeypatch.setattr(RL, "cache_ready", lambda *a, **k: True)
+    st.active_id = "toy"
+    r = client.get("/api/route", params={"rank": 1, "run": d["run"]})
+    assert r.status_code == 200 and st.layer is not None                           # rebuilt, run still on the map
+    st.layer = None; st.model.last = None
+    r = client.get("/api/route", params={"rank": 1, "run": d["run"]})
+    assert r.status_code == 409 and "Run the simulation again" in r.json()["detail"]
+    r = client.post("/api/dispatch", json={"fire_station": 1, "run": d["run"]})
+    assert r.status_code == 409 and "Run the simulation again" in r.json()["detail"]
+    monkeypatch.setattr(RL, "cache_ready", lambda *a, **k: False)
+    st.layer = None
+    r = client.get("/api/route", params={"rank": 1})
+    assert r.status_code == 409 and "Prepare" in r.json()["detail"]                # never prepared: still asks for it
 
 def test_report_endpoints(client, monkeypatch):
     import base64, report

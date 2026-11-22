@@ -1,7 +1,7 @@
 """Turn raw building footprints into an exposure table: use, storeys, construction type, people."""
 import numpy as np, pandas as pd
 
-METHOD_VERSION = "4"    # bump whenever the exposure method changes; cached areas are then rebuilt from raw footprints
+METHOD_VERSION = "5"    # bump whenever the exposure method changes; cached areas are then rebuilt from raw footprints
 
 LABEL = {}
 def _add(cat, *names):
@@ -25,6 +25,10 @@ _add("outbuilding", "outbuilding", "shed", "garage", "garages", "carport", "park
 DENS = {"residential": 15, "office": 12, "retail": 10, "hotel": 30, "education": 7, "medical": 20,
         "industrial": 40, "warehouse": 150, "religious": 10, "entertainment": 8, "outbuilding": 400, "large": 100}
 SINGLE_STOREY = ["industrial", "warehouse", "outbuilding", "large", "religious", "entertainment"]
+TALL_CLAIM = 8        # a label of at least this many storeys is checked against the satellite height (tall features are resolved well)
+LABEL_RATIO = 2.0     # ... and rejected when the two heights differ by more than this factor (planned or mistyped heights, towers still being built)
+SLENDER_MAX = 6.0     # no building is taller than this multiple of its footprint's side (sqrt of area); floor of MIN_CAP storeys
+MIN_CAP = 3
 ENGINEERED = ["industrial", "warehouse", "office", "retail", "hotel", "education", "medical"]
 
 def _levels(b, area, use, apt, h=None, spread=None, storey_m=None):
@@ -44,6 +48,7 @@ def _levels(b, area, use, apt, h=None, spread=None, storey_m=None):
     lab_h = num("height") / sm
     src = pd.Series("guess", index=b.index, dtype=object)
     levels = default.copy()
+    sat = None
     if h is not None:
         h = pd.Series(np.asarray(h, float), index=b.index)
         sp = pd.Series(np.asarray(spread, float) if spread is not None else np.zeros(len(b)), index=b.index).fillna(0)
@@ -51,13 +56,26 @@ def _levels(b, area, use, apt, h=None, spread=None, storey_m=None):
         good = has & (h >= 2.0) & (sp <= 6.0)
         levels = levels.where(~good, (h / sm))
         src = src.mask(good, "google").mask(has & ~good, "guess_unstable")
+        sat = h / sm                                 # what the satellite says, in storeys, whatever its stability
     single = use.isin(SINGLE_STOREY)
     levels = levels.where(~(single & src.isin(["google", "guess", "guess_unstable"])), levels.clip(upper=2))
-    levels = levels.mask(lab_h.notna(), lab_h)
-    src = src.mask(lab_h.notna(), "label_height")
-    levels = levels.mask(lab.notna(), lab)
-    src = src.mask(lab.notna(), "label")
-    return levels.clip(1, 40).round(), src
+    claim = lab.where(lab.notna(), lab_h)            # storeys the map data claims (a floor count wins over a height)
+    ok_lab = claim.notna()
+    if sat is not None:
+        # A tall claim that the satellite contradicts is not believed. 80 floors / 300 m was mapped on a tower the satellite sees at 94 m
+        # (planned height or still being built); one mistyped number must not hold thousands of people.
+        far = claim.notna() & (claim >= TALL_CLAIM) & (h >= 6.0) & ((claim > LABEL_RATIO * sat) | (claim < sat / LABEL_RATIO))
+        ok_lab = ok_lab & ~far
+        levels = levels.where(~far, sat.clip(lower=1))
+        src = src.mask(far, "google_over_label")
+    levels = levels.mask(lab_h.notna() & ok_lab, lab_h)
+    src = src.mask(lab_h.notna() & ok_lab, "label_height")
+    levels = levels.mask(lab.notna() & ok_lab, lab)
+    src = src.mask(lab.notna() & ok_lab, "label")
+    levels = levels.clip(1, 40).round()
+    # shape check: a building is not more than SLENDER_MAX times taller than it is wide
+    cap = np.maximum(MIN_CAP, np.floor(SLENDER_MAX * np.sqrt(np.maximum(np.asarray(area, float), 1.0)) / sm))
+    return np.minimum(levels, cap), src
 
 def A_storey_bin(levels):
     from priors import storeys_bin
@@ -148,7 +166,7 @@ def make_exposure(b, height_dir=None, pop_raster=None, data_dir=None, storey_m=N
     src = g["levels_src"].value_counts()
     st["levels_src"] = {k: int(v) for k, v in src.items()}
     st["levels_model_share"] = float(src.get("satellite_model", 0) / max(len(g), 1))
-    st["levels_measured_share"] = float(src.reindex(["label", "label_height", "google"]).fillna(0).sum() / max(len(g), 1))
+    st["levels_measured_share"] = float(src.reindex(["label", "label_height", "google", "google_over_label"]).fillna(0).sum() / max(len(g), 1))
     st["height_source"] = "Google Open Buildings 2.5D Temporal" if ht is not None else "none (storeys are guesses except labelled buildings)"
     st["storey_model"] = "satellite-supervised gradient boosting (footprint + neighbourhood) for buildings the height product cannot resolve" if st["levels_model_share"] > 0 else None
     g.attrs["stats"] = st

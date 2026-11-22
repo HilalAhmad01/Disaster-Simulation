@@ -89,8 +89,67 @@ def from_osmnx(G, data_dir=None):
     return RoadNet(np.column_stack([nx_, ny_]), [index[a] for a in e["u"]], [index[b] for b in e["v"]], length / (kph / 3.6), length, geoms, w,
                    node_ll=np.column_stack([nodes.x.to_numpy(), nodes.y.to_numpy()]), utm=utm)
 
+OVERPASS_API = ("https://overpass-api.de/api", "https://overpass.private.coffee/api", "https://overpass.kumi.systems/api")
+
 def graph_path(data_dir, area_id):
     return pathlib.Path(data_dir) / "roads" / f"{area_id}.graphml"
+
+TILE_KM = 10.0       # road queries are split into tiles of about this side: one query over a 25 x 26 km city failed on two public servers
+                     # (after 1 and 6 minutes), tiles of this size come back in seconds each
+
+def road_tiles(bbox, tile_km=TILE_KM):
+    """Grid of boxes (w, s, e, n) of at most about tile_km per side covering bbox (one box for a small area)."""
+    w, s, e, n = bbox
+    kx = 111.0 * np.cos(np.radians((s + n) / 2))
+    nx_, ny_ = max(1, int(np.ceil((e - w) * kx / tile_km))), max(1, int(np.ceil((n - s) * 111.0 / tile_km)))
+    xs, ys = np.linspace(w, e, nx_ + 1), np.linspace(s, n, ny_ + 1)
+    return [(float(xs[i]), float(ys[j]), float(xs[i + 1]), float(ys[j + 1])) for j in range(ny_) for i in range(nx_)]
+
+def _download_drive_network(bbox, log=print, workers=2):
+    """Drive network of a box. A small box is one OSMnx request; a big one is cut into tiles fetched two at a time (the public Overpass
+    servers allow two requests per address), with the mirror switched when one is busy. Edges that cross a tile border are kept by both
+    tiles, the graphs are joined by node id and simplified once at the end, so streets are not cut at the seams."""
+    import osmnx as ox, networkx as nx, time, threading
+    from concurrent.futures import ThreadPoolExecutor
+    ox.settings.requests_timeout = 240
+    tiles = road_tiles(bbox)
+    lock, st, done = threading.Lock(), {"i": 0}, [0]
+    empty = getattr(getattr(ox, "_errors", None), "InsufficientResponseError", ())
+    def one(b):
+        last = None
+        for _ in range(3 * len(OVERPASS_API)):
+            with lock:
+                i = st["i"]
+            ox.settings.overpass_url = OVERPASS_API[i % len(OVERPASS_API)]
+            try:
+                kw = dict(simplify=False, retain_all=True, truncate_by_edge=True) if len(tiles) > 1 else {}
+                G = ox.graph_from_bbox(bbox=b, network_type="drive", **kw)
+                with lock:
+                    done[0] += 1
+                    if len(tiles) > 1:
+                        log(f"Streets: {done[0]} of {len(tiles)} parts downloaded")
+                return G
+            except Exception as ex:
+                if empty and isinstance(ex, empty):          # nothing drivable in this tile (river, forest)
+                    with lock:
+                        done[0] += 1
+                    return None
+                last = ex
+                with lock:
+                    if st["i"] == i:
+                        st["i"] += 1                          # next mirror for everyone
+                time.sleep(2)
+        raise RuntimeError(f"OpenStreetMap servers are busy or unreachable ({str(last)[:120]}). Try again in a minute.")
+    log("Downloading the road network from OpenStreetMap…" if len(tiles) == 1 else f"Downloading the road network in {len(tiles)} parts…")
+    with ThreadPoolExecutor(max_workers=workers if len(tiles) > 1 else 1) as pool:
+        graphs = [g for g in pool.map(one, tiles) if g is not None and g.number_of_edges()]
+    if not graphs:
+        raise RuntimeError("OpenStreetMap has no drivable roads in this area.")
+    if len(tiles) == 1:
+        return graphs[0]
+    log("Joining the parts…")
+    G = ox.simplification.simplify_graph(nx.compose_all(graphs))
+    return ox.truncate.largest_component(G, strongly=False)
 
 def load_or_download(data_dir, area_id, bbox, pad_km=2.0, log=print):
     """Drive network for an area bbox padded by pad_km, cached as data/roads/<area>.graphml. Needs network the first time."""
@@ -100,12 +159,46 @@ def load_or_download(data_dir, area_id, bbox, pad_km=2.0, log=print):
         return ox.load_graphml(p)
     w, s, e, n = bbox
     dlat, dlon = pad_km / 111.0, pad_km / (111.0 * np.cos(np.radians((s + n) / 2)))
-    ox.settings.requests_timeout = 240
-    log("Downloading the road network from OpenStreetMap…")
-    G = ox.graph_from_bbox(bbox=(w - dlon, s - dlat, e + dlon, n + dlat), network_type="drive", simplify=True)
+    G = _download_drive_network((w - dlon, s - dlat, e + dlon, n + dlat), log=log)
     p.parent.mkdir(parents=True, exist_ok=True)
     ox.save_graphml(G, p)
     return G
+
+NET_CACHE_VERSION = 1
+
+def _stamp(p):
+    s = pathlib.Path(p).stat()
+    return [str(p), s.st_size, s.st_mtime_ns]
+
+def load_net(data_dir, area_id, bbox, log=print):
+    """RoadNet for an area: downloaded the first time (load_or_download), then from data/roads/<area>.graphml. The built RoadNet
+    is also kept as <area>.net.pkl, because parsing the GraphML and rebuilding took ~10 s on a city the size of Noida every time
+    the responder layer was prepared; the pickle loads in under a second. It is rebuilt when the GraphML or the width/speed
+    tables change. (The pickle is a file this app wrote itself, next to the GraphML it came from.)"""
+    import pickle, priors
+    gp = graph_path(data_dir, area_id)
+    pp = gp.with_name(f"{area_id}.net.pkl")
+    def key():
+        return [NET_CACHE_VERSION, _stamp(gp)] + [_stamp(priors.path(n, data_dir)) for n in ("road_speeds.csv", "street_width.csv")]
+    if gp.exists() and pp.exists():
+        try:
+            with open(pp, "rb") as f:
+                d = pickle.load(f)
+            if d.get("key") == key():
+                return d["net"]
+        except Exception as ex:                      # unreadable or from another version: rebuild below
+            print(f"Rebuilding road cache for {area_id}: {ex}")
+    G = load_or_download(data_dir, area_id, bbox, log=log)
+    log("Building the road graph…")
+    net = from_osmnx(G, data_dir)
+    try:
+        tmp = pp.with_suffix(".part")
+        with open(tmp, "wb") as f:
+            pickle.dump({"key": key(), "net": net}, f, protocol=pickle.HIGHEST_PROTOCOL)
+        tmp.replace(pp)
+    except Exception as ex:
+        print(f"Could not cache the road graph: {ex}")
+    return net
 
 def debris_width(area_m2, height_m, masonry):
     """Debris spread beyond the facade (m) of a collapsed building: masonry from Anelli et al. (2020) eqs. 2-4 with a = b = sqrt(area),
@@ -115,24 +208,33 @@ def debris_width(area_m2, height_m, masonry):
     eps = EPS0 + EPS_AB + EPS_HA * h / a
     return np.where(masonry, a * (eps - 1.0), STOREY_M)
 
-def blockage(net, b_geom, b_height_m, p_collapse, p_extensive, p_masonry=None, search=SEARCH_M, free_min=FREE_MIN_M):
-    """P(each directed edge is blocked by debris). b_geom: building footprints in the net's UTM CRS (shapely, array);
-    b_height_m, p_collapse (complete damage), p_extensive (extensive damage or worse), p_masonry (share of load-bearing masonry,
-    default 1): per building. Streets with no building within `search` metres get 0."""
+def blockage_pairs(net, b_geom, search=SEARCH_M):
+    """Street-building pairs within `search` metres, with their distance and the building's footprint area. Depends only on
+    the geometry, not on the scenario, so a caller can keep it and skip the spatial query (most of the time) on later runs."""
     import shapely
     from shapely import STRtree
     b_geom = np.asarray(b_geom, dtype=object)
-    n = len(b_geom)
+    eb, bi = STRtree(b_geom).query(shapely.buffer(net.geom, search), predicate="intersects")   # pairs: edge index, building index
+    dist = shapely.distance(net.geom[eb], b_geom[bi]) if len(eb) else np.zeros(0)
+    return {"eb": eb.astype(np.int32), "bi": bi.astype(np.int32), "dist": dist, "area": shapely.area(b_geom)[bi] if len(eb) else np.zeros(0),
+            "n": len(b_geom), "search": search}
+
+def blockage(net, b_geom, b_height_m, p_collapse, p_extensive, p_masonry=None, search=SEARCH_M, free_min=FREE_MIN_M, pairs=None):
+    """P(each directed edge is blocked by debris). b_geom: building footprints in the net's UTM CRS (shapely, array);
+    b_height_m, p_collapse (complete damage), p_extensive (extensive damage or worse), p_masonry (share of load-bearing masonry,
+    default 1): per building. Streets with no building within `search` metres get 0. pairs: blockage_pairs() for the same
+    net, buildings and search distance (computed here when not given)."""
+    if pairs is None or pairs["search"] != search:
+        pairs = blockage_pairs(net, b_geom, search)
+    n = pairs["n"]
     pm = np.ones(n) if p_masonry is None else np.clip(np.asarray(p_masonry, float), 0.0, 1.0)
-    tree = STRtree(b_geom)
-    eb, bi = tree.query(shapely.buffer(net.geom, search), predicate="intersects")        # pairs: edge index, building index
+    eb, bi, dist = pairs["eb"], pairs["bi"], pairs["dist"]
     if len(eb) == 0:
         return np.zeros(net.n_edges)
-    dist = shapely.distance(net.geom[eb], b_geom[bi])
     W = net.width[eb]
     setback = np.maximum(dist - W / 2.0, 0.0)
     thr = np.maximum(W - free_min, 0.0)
-    area, h = shapely.area(b_geom)[bi], np.asarray(b_height_m, float)[bi]
+    area, h = pairs["area"], np.asarray(b_height_m, float)[bi]
     def share(w):                                                                       # chance the debris direction reaches far enough
         def blocks(x):
             enc = x - setback

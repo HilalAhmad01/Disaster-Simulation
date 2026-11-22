@@ -23,13 +23,21 @@
   --ink:#ededed;--ink-hover:#fff;--text2:#a1a1a6;--muted:#85858b;--neg:#e5484d;
   --chev:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%2385858b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
   color-scheme:dark}
-*{box-sizing:border-box}
+*{box-sizing:border-box}[hidden]{display:none!important}
 html,body{height:100%;margin:0}
 body{font:400 14px/20px var(--sans);color:var(--ink);background:var(--bg);-webkit-font-smoothing:antialiased}
 #app{display:flex;height:100%}
-aside{width:320px;flex:none;background:var(--side);border-right:1px solid var(--line);overflow:auto;padding:20px 16px 24px}
-#map{flex:1}
-h1{font:500 18px/24px var(--sans);margin:0 0 20px}
+aside{width:var(--side-w,340px);flex:none;background:var(--side);border-right:1px solid var(--line);overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;padding:16px 16px 24px}
+#map{flex:1;min-width:0;position:relative;background:#fafafa}
+/* drag handle between the panel and the map: wider than it looks so it is easy to grab */
+#resizer{flex:none;width:10px;margin:0 -5px;cursor:col-resize;position:relative;z-index:6;touch-action:none}
+#resizer::after{content:"";position:absolute;left:4px;top:0;bottom:0;width:2px;background:transparent;transition:background-color .15s var(--ease)}
+#resizer:hover::after,#resizer:focus-visible::after,body.resizing #resizer::after{background:var(--ink)}
+#resizer:focus-visible{outline:none}
+body.resizing{user-select:none;cursor:col-resize}body.resizing #map{pointer-events:none}
+#app.nopanel aside,#app.nopanel #resizer{display:none}
+p,.hint,.stat span,.drow,.hot,summary,label{overflow-wrap:anywhere}
+h1{font:500 18px/24px var(--sans);margin:0 0 8px}
 h2{font:500 12px/16px var(--sans);color:var(--muted);margin:24px 0 8px}
 b,strong{font-weight:500}
 label{display:block;font:500 12px/16px var(--sans);color:var(--text2);margin:12px 0 4px}
@@ -50,97 +58,228 @@ button:disabled{opacity:.5;cursor:wait;transform:none}
 .chk{display:flex;gap:8px;align-items:center;font:400 14px/20px var(--sans);color:var(--ink);margin:12px 0 0}.chk input{width:16px;height:16px;flex:none;accent-color:var(--ink)}
 .selbox{position:absolute;border:1.5px dashed var(--ink);background:rgba(127,127,127,.14);pointer-events:none;z-index:5}
 .prog{height:4px;background:var(--line-2);border-radius:2px;margin-top:8px;overflow:hidden}.prog i{display:block;height:100%;background:var(--ink);width:0}
-details{margin-top:12px}
+details{margin-top:0}
 summary{display:flex;align-items:center;gap:8px;min-height:32px;cursor:pointer;font:500 14px/20px var(--sans);list-style:none}
 summary::-webkit-details-marker{display:none}
 summary::before{content:"";flex:none;width:6px;height:6px;border-right:1.5px solid var(--muted);border-bottom:1.5px solid var(--muted);transform:rotate(-45deg);transition:transform .15s var(--ease)}
 details[open]>summary::before{transform:rotate(45deg)}
-#scn{margin:0;padding-bottom:4px;border-bottom:1px solid var(--line)}#scn>summary{min-height:36px;margin-bottom:4px}#scn:not([open]){padding-bottom:12px}
-#scnSum{margin-left:auto;font:400 12px/16px var(--mono);color:var(--muted)}
+/* every group of the panel folds; the open/closed state is remembered between visits */
+details.sec{border-bottom:1px solid var(--line)}details.sec>summary{min-height:40px}.secb{padding:0 0 12px}
+.sum{margin-left:auto;max-width:62%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 12px/16px var(--mono);color:var(--muted)}
 .fac-dot{width:12px;height:12px;border-radius:50%;display:inline-block;margin-right:8px;vertical-align:-1px}
 .rt{width:auto;height:auto;margin:8px 0 0 8px;padding:4px 12px;font-size:12px;line-height:16px;background:var(--raised);color:var(--ink);border-color:var(--line-2)}.rt:hover{background:var(--hover)}
-table.d{width:100%;border-collapse:collapse;font-size:12px;line-height:16px;margin-top:8px;font-variant-numeric:tabular-nums}table.d td,table.d th{padding:4px;border-bottom:1px solid var(--line);text-align:left}
 .hint{font:400 12px/16px var(--sans);color:var(--muted);margin:8px 0 0}
 .stat{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:6px 0;border-bottom:1px solid var(--line)}
-.stat span{color:var(--text2)}.stat b{font:500 13px/20px var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.stat span{color:var(--text2);min-width:0}.stat b{font:500 13px/20px var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+.stat b small{display:block;font:400 11px/14px var(--mono);color:var(--muted)}
 .key{padding:0 0 16px;border-bottom:1px solid var(--line)}.key span{display:block;color:var(--text2);font-size:13px;line-height:20px}.key b{display:block;font:500 32px/40px var(--mono);font-variant-numeric:tabular-nums}
 .legend{display:grid;gap:8px}.legend div{display:flex;align-items:center;gap:8px;font-size:13px;line-height:16px;color:var(--text2)}.legend span{flex:none;width:12px;height:12px;border-radius:3px}
-.hot{display:block;width:100%;height:auto;text-align:left;background:var(--surface);color:var(--ink);border:1px solid var(--line);margin:8px 0 0;font:400 13px/20px var(--sans);padding:8px 12px}.hot:hover{background:var(--raised)}
+.hot{display:block;width:100%;height:auto;text-align:left;background:var(--surface);color:var(--ink);border:1px solid var(--line);margin:8px 0 0;font:400 13px/20px var(--sans);padding:8px 12px;white-space:normal}.hot:hover{background:var(--raised)}
 .hot b{font:500 12px/16px var(--mono);margin-right:4px}
-.pin{width:28px;height:28px;border-radius:50%;background:var(--ink);color:var(--bg);font:500 12px/1 var(--mono);display:grid;place-items:center;border:2px solid var(--bg);box-shadow:0 1px 4px rgba(0,0,0,.35);cursor:pointer}
-.pin.worst{background:var(--bg);color:var(--ink);border-color:var(--ink)}
-.epi{width:16px;height:16px;background:var(--ink);border:2px solid var(--bg);box-shadow:0 1px 4px rgba(0,0,0,.35);transform:rotate(45deg)}
-.maplibregl-popup-content{font:400 13px/20px var(--sans);padding:12px 16px;background:var(--surface);color:var(--ink);border:1px solid var(--line-2);border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.2)}
+.pin{width:28px;height:28px;border-radius:50%;background:#171717;color:#fff;font:500 12px/1 var(--mono);display:grid;place-items:center;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);cursor:pointer}
+.pin.worst{background:#fff;color:#171717;border-color:#171717}
+/* the marker box is the pin plus its stem; the box's bottom edge (the stem's tip) sits on the real spot, so in a tilted 3D view the pin
+   no longer looks like it hangs on a tower's wall */
+.pinw{width:28px;height:38px;cursor:pointer}.pinw .pin{position:absolute;left:0;top:0}
+.pinw::after{content:"";position:absolute;left:8px;bottom:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:10px solid #171717}
+.epi{width:16px;height:16px;background:#171717;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);transform:rotate(45deg)}
+.maplibregl-popup{max-width:280px!important;z-index:30}.maplibregl-popup-content{overflow-wrap:anywhere;font:400 13px/20px var(--sans);padding:12px 16px;background:var(--surface);color:var(--ink);border:1px solid var(--line-2);border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.2)}
 /* colour only the side of the tip that points at the feature (setting all sides turned side-anchored tips into squares) */
 .maplibregl-popup-anchor-bottom .maplibregl-popup-tip,.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip{border-top-color:var(--surface)}
 .maplibregl-popup-anchor-top .maplibregl-popup-tip,.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,.maplibregl-popup-anchor-top-right .maplibregl-popup-tip{border-bottom-color:var(--surface)}
 .maplibregl-popup-anchor-left .maplibregl-popup-tip{border-right-color:var(--surface)}.maplibregl-popup-anchor-right .maplibregl-popup-tip{border-left-color:var(--surface)}
 .maplibregl-popup-close-button{color:var(--muted);font-size:18px;padding:0 6px;width:auto;height:auto;margin:0;background:none;border:0}.maplibregl-popup-close-button:hover{background:none;color:var(--ink)}
 .maplibregl-popup-content b{font-weight:500}
-.mapctl{position:absolute;top:16px;right:16px;z-index:4;display:flex;gap:8px}.mapctl button{width:auto;height:32px;margin:0;padding:0 12px;font-size:13px;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+.mapctl{position:absolute;top:16px;right:16px;z-index:4;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;max-width:calc(100% - 32px)}.mapctl.l{right:auto;left:16px}.mapctl button{width:auto;height:32px;margin:0;padding:0 12px;font-size:13px;box-shadow:0 1px 4px rgba(0,0,0,.2)}
 .shaking{will-change:transform}
 #timeline{display:flex;gap:8px;align-items:center;margin-top:12px}#timeline input[type=range]{height:auto;padding:0;accent-color:var(--ink)}#tlT{white-space:nowrap;min-width:40px;text-align:right;font:400 12px/16px var(--mono)}
 #err{color:var(--neg);margin-top:12px;font-size:13px;line-height:20px}
-@media(max-width:700px){#app{flex-direction:column-reverse}aside{width:100%;height:45%;border-right:0;border-top:1px solid var(--line)}#map{min-height:0}}
+/* results tabs: a segmented control; one pane shows at a time */
+.tabs{display:flex;gap:2px;margin:12px 0 4px;padding:2px;background:var(--raised);border:1px solid var(--line);border-radius:10px;position:sticky;top:-16px;z-index:2;overflow-x:auto;scrollbar-width:none}
+.tabs button{flex:1 0 auto;width:auto;height:30px;margin:0;padding:0 6px;background:transparent;color:var(--text2);border:0;border-radius:8px;font:500 12px/16px var(--sans);white-space:nowrap}
+.tabs button:hover{background:transparent;color:var(--ink)}
+.tabs button[aria-selected=true]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12),0 0 0 1px var(--line)}
+.tabs button .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--ink);margin-left:4px;vertical-align:2px}
+.pane{padding-top:12px}.pane>h2:first-child,.pane>.first{margin-top:0}
+.foot{margin-top:24px;padding-top:12px;border-top:1px solid var(--line)}
+.prow{display:flex;gap:8px;align-items:stretch;margin-top:8px}.hot .sub{display:block;font-size:12px;line-height:16px;color:var(--text2)}.prow .hot{flex:1;min-width:0;margin:0}.prow .rt{flex:none;margin:0;align-self:center}
+.rt:disabled{cursor:progress}
+.drow{display:flex;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px;line-height:20px}.drow>b{font:500 12px/20px var(--mono);min-width:16px}.drow .hint{margin:0}
+.maplegend{position:absolute;left:16px;bottom:24px;z-index:4;padding:8px 12px;background:var(--surface);border:1px solid var(--line-2);border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.15);width:232px;max-width:calc(100% - 32px);max-height:calc(100% - 96px);overflow:auto;margin:0}
+.maplegend>summary{min-height:20px;font-size:12px;line-height:16px;color:var(--text2)}.maplegend[open]>summary{margin-bottom:4px}
+.lg{padding-top:8px;margin-top:8px;border-top:1px solid var(--line);font-size:12px;line-height:16px;color:var(--text2)}.lg:first-of-type{border-top:0;margin-top:0;padding-top:0}
+.lg h3{font:500 12px/16px var(--sans);color:var(--ink);margin:0 0 6px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.ramp{height:8px;border-radius:4px}.rl{display:flex;justify-content:space-between;margin-top:2px;font-size:11px;line-height:14px;color:var(--muted)}
+#lgHeat h3{display:block}#lgHeat .seg{margin-top:6px;width:max-content}
+.seg{display:flex;gap:0;border:1px solid var(--line-2);border-radius:6px;overflow:hidden}.seg button{width:auto;height:20px;margin:0;padding:0 8px;border:0;border-radius:0;background:transparent;color:var(--text2);font:500 11px/20px var(--sans)}.seg button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+.legend{display:grid;gap:4px}.legend div{display:flex;align-items:center;gap:8px}.legend span{flex:none;width:12px;height:12px;border-radius:3px}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:4px 8px}.fk{display:flex;align-items:center;gap:6px;margin:0;font:400 12px/16px var(--sans);color:var(--text2);cursor:pointer}.fk input{width:14px;height:14px;flex:none;margin:0;accent-color:var(--ink)}.fk i{flex:none;width:10px;height:10px;border-radius:50%;border:1px solid #fff;box-shadow:0 0 0 1px var(--line-2)}
+.rt-line{display:inline-block;width:20px;height:0;border-top:3px dashed #2c5aa0;vertical-align:middle;margin-right:6px}.rt-line.r{border-top:4px solid #d7263d}
+/* dispatch panel (right): live phones, alerts and SOS calls from /sos (live.py) */
+#dispatch{width:var(--disp-w,380px);flex:none;display:flex;flex-direction:column;min-height:0;background:var(--side);border-left:1px solid var(--line)}
+#app.nodisp #dispatch{display:none}
+.dh{flex:none;padding:12px 16px 0;border-bottom:1px solid var(--line)}
+.dht{display:flex;align-items:center;gap:8px}.dht h1{margin:0;font:500 16px/24px var(--sans)}
+.dsub{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 12px/16px var(--mono);color:var(--muted);text-align:right}
+button.icon{flex:none;width:28px;height:28px;margin:0;padding:0;background:transparent;color:var(--muted);border:0;font-size:16px;line-height:28px}button.icon:hover{background:var(--hover);color:var(--ink)}
+.lconn{flex:none;display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted)}.lconn.on{background:var(--grn)}.lconn.off{background:var(--neg)}
+.dtools{display:flex;gap:6px;margin-top:10px}.dtools button{flex:1;height:30px;margin:0;padding:0 8px;font-size:12px}
+.dpop{margin-top:10px;padding:10px 12px 12px;background:var(--surface);border:1px solid var(--line-2);border-radius:10px;max-height:40vh;overflow-y:auto}.dpop>label:first-child{margin-top:0}
+.dpop .hint:last-child{margin-bottom:0}
+textarea{width:100%;min-height:72px;padding:8px 12px;border:1px solid var(--line-2);border-radius:8px;font:400 13px/20px var(--sans);background:var(--surface);color:var(--ink);resize:vertical}
+textarea:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+#aHist{margin-top:8px}#aHist div{font:400 12px/18px var(--mono);color:var(--text2);padding:4px 0;border-top:1px solid var(--line)}
+#qr svg{display:block;width:168px;height:168px;margin:10px auto 0;background:#fff;padding:6px;border-radius:8px}
+.dtabs{display:flex;margin-top:10px}
+.dtabs button{flex:1;width:auto;height:36px;margin:0;padding:0 4px;background:transparent;color:var(--text2);border:0;border-bottom:2px solid transparent;border-radius:0;font:500 13px/16px var(--sans)}
+.dtabs button:hover{background:transparent;color:var(--ink)}.dtabs button[aria-selected=true]{color:var(--ink);border-bottom-color:var(--ink)}
+.dtabs b{font:500 12px/16px var(--mono);color:var(--muted);margin-left:4px}.dtabs b.crit{color:var(--neg)}
+.dlist{flex:1 1 auto;min-height:96px;overflow-y:auto;overscroll-behavior:contain}
+.dempty{padding:24px 16px;color:var(--muted);font-size:13px;line-height:20px;text-align:center}
+.srow{display:grid;grid-template-columns:4px 1fr auto;column-gap:12px;row-gap:2px;align-items:center;width:100%;height:auto;margin:0;padding:10px 16px 10px 0;
+  background:transparent;color:var(--ink);border:0;border-bottom:1px solid var(--line);border-radius:0;text-align:left;font:400 13px/18px var(--sans)}
+.srow:hover{background:var(--hover)}.srow.sel{background:var(--raised);box-shadow:inset 3px 0 0 var(--ink)}
+.srow .bar{grid-row:1/3;align-self:stretch;border-radius:0 3px 3px 0}
+.srow .l1{display:flex;align-items:center;gap:6px;min-width:0}.srow .l1 b{font:500 13px/18px var(--mono)}
+.srow .l2{grid-column:2/4;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.srow .tm{font:400 12px/18px var(--mono);color:var(--muted);white-space:nowrap}
+.lvl{font:500 10px/16px var(--sans);text-transform:uppercase;letter-spacing:.04em;padding:0 6px;border-radius:4px;color:#fff;background:#3b7dd8}
+.lvl.critical{background:#d7263d}.lvl.high{background:#e67e22}.lvl.medium{background:#f2b705;color:#171717}.lvl.done{background:var(--muted)}
+.demo{font:500 10px/16px var(--sans);text-transform:uppercase;padding:0 5px;border-radius:4px;color:var(--muted);border:1px solid var(--line-2)}
+.tagr{color:var(--neg);font-weight:500}
+@keyframes rowflash{0%,100%{background:transparent}50%{background:color-mix(in srgb,var(--red) 18%,transparent)}}.srow.flash{animation:rowflash .9s 3}
+.ddet{flex:none;max-height:58%;overflow-y:auto;border-top:1px solid var(--line-2);padding:12px 16px 16px;background:var(--surface);font-size:13px;line-height:20px}
+.ddh{display:flex;align-items:center;gap:8px}.ddh b{font:500 15px/24px var(--mono)}.ddh .tm{flex:1;text-align:right;font:400 12px/16px var(--mono);color:var(--muted)}
+.ddet p{margin:6px 0 0}.ddet .note{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}.ddet .tags{font-size:14px;font-weight:500}.ddet h2{margin:16px 0 4px}
+.dstat{margin-top:10px;padding:8px 10px;border-radius:8px;background:var(--raised);border:1px solid var(--line)}
+.opt{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}.opt>i{flex:none;width:10px;height:10px;border-radius:50%}
+.opt div{flex:1;min-width:0}.opt div b{display:block;font-weight:500}.opt div span{display:block;font-size:12px;line-height:16px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.opt .eta{font:500 13px/20px var(--mono);white-space:nowrap}.opt button{width:auto;height:30px;margin:0;padding:0 14px;font-size:12px}
+.dacts{display:flex;gap:8px;margin-top:12px}.dacts button{flex:1;margin:0;height:32px;font-size:13px}
+#dispatch{position:relative}
+.dtoast{position:absolute;left:16px;right:16px;bottom:16px;z-index:5;padding:10px 12px;border-radius:10px;background:var(--ink);color:var(--bg);font:500 13px/18px var(--sans);box-shadow:0 4px 16px rgba(0,0,0,.25)}
+.dtoast.bad{background:var(--neg);color:#fff}
+#dispBtn .badge{display:inline-block;min-width:18px;height:18px;margin-left:6px;padding:0 5px;border-radius:9px;background:var(--red);color:#fff;font:500 11px/18px var(--mono);vertical-align:1px}
+#dispBtn .badge:empty{display:none}
+@media(max-width:1200px) and (min-width:701px){#dispatch{width:320px}}
+@media(max-width:700px){#dispatch{position:fixed;left:0;right:0;bottom:0;width:auto;height:70%;z-index:20;border-left:0;border-top:1px solid var(--line-2);border-radius:14px 14px 0 0;box-shadow:0 -8px 24px rgba(0,0,0,.25)}}
+@media(max-width:700px){.maplegend{left:8px;bottom:8px;padding:6px 8px;width:200px;max-height:45%}}
+@media(max-width:700px){#app{flex-direction:column-reverse}aside{width:100%;height:45%;border-right:0;border-top:1px solid var(--line)}#map{min-height:0}#resizer{display:none}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
 </style></head><body><div id="app">
-<aside>
+<aside id="side">
 <h1 id="title">Earthquake damage estimate</h1>
-<details id="scn" open><summary>Scenario<span id="scnSum"></span></summary>
-<div class="grp"><label for="hz">Hazard</label><select id="hz"><option value="earthquake">Earthquake</option><option value="cyclone">Cyclone (wind)</option><option value="flood">Flood (water depth)</option></select>
+<details class="sec" id="areaSec" open><summary>Area<span class="sum" id="areaSum"></span></summary><div class="secb">
 <button id="area" type="button" class="alt">Load a new area</button>
-<p class="hint" id="areaMsg">Drag a box over any place (up to about 30 km across) to download its buildings and use them. The server needs internet access.</p>
+<p class="hint" id="areaMsg">Drag a box up to about 30 km across. The first time needs internet.</p>
 <div id="areaBox" hidden><label for="areaSel">Saved areas</label><select id="areaSel"></select>
 <button id="refresh" type="button" class="alt" hidden>Update to the latest Overture release</button></div>
-</div>
+</div></details>
+<details class="sec" id="scn" open><summary>Scenario<span class="sum" id="scnSum"></span></summary><div class="secb">
+<div class="grp"><label for="hz">Hazard</label><select id="hz"><option value="earthquake">Earthquake</option><option value="cyclone">Cyclone (wind)</option><option value="flood">Flood (water depth)</option></select></div>
 <div class="grp"><div class="row"><div><label for="lat" id="latL">Epicentre latitude</label><input id="lat" type="number" step="any"></div>
 <div><label for="lon" id="lonL">Epicentre longitude</label><input id="lon" type="number" step="any"></div></div>
+<button id="pick" type="button" class="alt" title="Or drag the diamond marker, or shift-click the map. The epicentre can be outside the city.">Pick epicentre on map</button>
 <div id="hzEq"><div class="row"><div><label for="mag">Magnitude</label><input id="mag" type="number" step="0.1" value="6.5"></div>
 <div><label for="depth">Depth (km)</label><input id="depth" type="number" step="1" value="15"></div></div></div>
-<div id="hzCy" hidden><p class="hint">The cyclone track is a straight line through the chosen point in the direction of travel.</p><div class="row"><div><label for="cHead">Heading (&deg;)</label><input id="cHead" type="number" min="0" max="359" value="45"></div><div><label for="cSpeed">Speed (m/s)</label><input id="cSpeed" type="number" min="0" max="30" value="6"></div></div><div class="row"><div><label for="cDp">Pressure drop (hPa)</label><input id="cDp" type="number" min="5" max="150" value="80"></div><div><label for="cRmax">Eye radius (km)</label><input id="cRmax" type="number" min="5" max="200" value="30"></div></div></div>
-<div id="hzFl" hidden><label for="flFile">Flood depth map (GeoTIFF, metres)</label><input id="flFile" type="file" accept=".tif,.tiff"><label for="flScale">Depth multiplier</label><input id="flScale" type="number" min="0.1" max="10" step="0.1" value="1"><p class="hint" id="flMsg">Pick a depth raster for the flood you want to test, for example a return-period map. Nothing is bundled.</p></div>
+<div id="hzCy" hidden><div class="row"><div><label for="cHead">Heading (&deg;)</label><input id="cHead" type="number" min="0" max="359" value="45"></div><div><label for="cSpeed">Speed (m/s)</label><input id="cSpeed" type="number" min="0" max="30" value="6"></div></div><div class="row"><div><label for="cDp">Pressure drop (hPa)</label><input id="cDp" type="number" min="5" max="150" value="80"></div><div><label for="cRmax">Eye radius (km)</label><input id="cRmax" type="number" min="5" max="200" value="30"></div></div><p class="hint">Straight track through the chosen point.</p></div>
+<div id="hzFl" hidden><label for="flFile">Flood depth map (GeoTIFF, metres)</label><input id="flFile" type="file" accept=".tif,.tiff"><label for="flScale">Depth multiplier</label><input id="flScale" type="number" min="0.1" max="10" step="0.1" value="1"><p class="hint" id="flMsg">Pick a depth raster, for example a return-period map.</p></div>
 <label for="tod">Time of day</label><select id="tod"><option value="night" selected>Night (people at home)</option><option value="day">Day (workplaces and schools full)</option><option value="commute">Evening commute</option></select>
-<details id="adv"><summary>Advanced: fault direction</summary>
-<p class="hint">Leave blank if unknown. With a strike, the quake is a rectangular rupture along that direction and shaking stretches along the fault.</p>
+</div>
+<details id="adv" class="in"><summary>Fault direction (optional)</summary>
 <div class="row"><div><label for="strike">Strike (&deg;)</label><input id="strike" type="number" min="0" max="359.9" step="any" placeholder="0-360"></div>
 <div><label for="dip">Dip (&deg;)</label><input id="dip" type="number" min="1" max="90" step="any" placeholder="auto"></div>
 <div><label for="rake">Rake (&deg;)</label><input id="rake" type="number" min="-180" max="180" step="any" placeholder="auto"></div></div>
-<p class="hint">Rake: 0 strike-slip, 90 reverse (thrust), -90 normal.</p></details>
-<button id="pick" type="button" class="alt">Pick epicentre on map</button><p class="hint">Or drag the diamond marker, or shift-click the map. The epicentre can be outside the city.</p>
-</div>
-<div class="grp"><label class="chk"><input type="checkbox" id="shake"> Shake the screen when the quake runs</label>
-<p class="hint" id="shakeHint">Off by default. Brief and gentle; disabled if your system asks for reduced motion.</p></div>
-</details>
+<p class="hint">Leave blank if unknown. Rake: 0 strike-slip, 90 thrust, -90 normal.</p></details>
+<label class="chk"><input type="checkbox" id="shake"> Shake the screen when the quake runs</label>
+<p class="hint" id="shakeHint" hidden></p>
+</div></details>
 <button id="run">Run simulation</button><div id="err" role="alert"></div>
 <div id="out" hidden>
-<h2>Summary</h2><div id="sum"></div><details id="conf"><summary>How much to trust this</summary><div id="confBody"><p class="hint">Loading…</p></div></details><div id="unc"></div>
-<h2>Legend</h2><div class="legend">
+<!-- results are split into tabs so turning on more tools never turns the panel into one long scroll -->
+<div class="tabs" role="tablist" aria-label="Results">
+<button type="button" role="tab" id="tab-sum" aria-controls="pane-sum" aria-selected="true">Summary</button>
+<button type="button" role="tab" id="tab-pri" aria-controls="pane-pri" aria-selected="false" tabindex="-1">Priorities</button>
+<button type="button" role="tab" id="tab-resp" aria-controls="pane-resp" aria-selected="false" tabindex="-1">Responders</button>
+<button type="button" role="tab" id="tab-map" aria-controls="pane-map" aria-selected="false" tabindex="-1">Map</button>
+</div>
+<section class="pane" id="pane-sum" role="tabpanel" aria-labelledby="tab-sum">
+<div id="sum"></div><div id="unc"></div>
+<details class="sec" id="more" data-keep><summary>More numbers</summary><div class="secb" id="moreBody"></div></details>
+<details class="sec" id="notes" data-keep><summary>Data sources and caveats</summary><div class="secb" id="notesBody"></div></details>
+<details class="sec" id="conf" data-keep><summary>How much to trust this</summary><div class="secb" id="confBody"><p class="hint">Loading…</p></div></details>
+</section>
+<section class="pane" id="pane-pri" role="tabpanel" aria-labelledby="tab-pri" hidden>
+<p class="hint first">The 8 neighbourhoods with the most people at risk. Press one to fly there.</p>
+<button id="worst" type="button" class="alt" hidden>Show worst-case priorities</button>
+<div id="routeBox" hidden><label for="routeFrom">Route from</label><select id="routeFrom"><option value="nearest:fire_station">nearest working fire station</option><option value="nearest:hospital">nearest working hospital</option><option value="nearest:police">nearest working police station</option></select>
+<p class="hint" id="routeMsg">Press <b>Route</b> next to a neighbourhood.</p></div>
+<div id="hots"></div>
+</section>
+<section class="pane" id="pane-resp" role="tabpanel" aria-labelledby="tab-resp" hidden>
+<button id="resp" type="button" class="alt first">Show hospitals, fire stations and roads</button><p class="hint" id="respMsg">Finds facilities and roads for this area. Facilities in damaged buildings are greyed out.</p>
+<div id="respTools" hidden>
+<details class="sec" id="accSec" data-keep open><summary>Hospital access</summary><div class="secb"><button id="acc" type="button" class="alt">Estimate hospital access</button><div id="accOut"></div></div></details>
+<details class="sec" id="dispSec" data-keep open><summary>Dispatch order</summary><div class="secb"><div class="row"><div><label for="tFire">Fire teams</label><input id="tFire" type="number" min="0" max="50" value="2"></div><div><label for="tPol">Police</label><input id="tPol" type="number" min="0" max="50" value="2"></div><div><label for="tAmb">Ambulances</label><input id="tAmb" type="number" min="0" max="50" value="2"></div></div>
+<button id="disp" type="button" class="alt">Suggest dispatch order</button><div id="dispOut"></div></div></details></div>
+</section>
+<section class="pane" id="pane-map" role="tabpanel" aria-labelledby="tab-map" hidden>
+<button id="v3d" type="button" class="alt first">Switch to 3D view</button>
+<div class="row"><div><button id="orbit" type="button" class="alt" title="Turns the 3D view slowly around the middle of the map. Fly to a neighbourhood first to orbit it. Drag the map or press Esc to stop.">Orbit view</button></div><div><select id="orbitSpeed" aria-label="Orbit speed" style="margin-top:8px"><option value="3">Slow</option><option value="6" selected>Normal</option><option value="12">Fast</option></select></div></div>
+<label class="chk" title="A visual cue for expected collapse in 3D (2.8 m per storey), not a prediction of how any building falls."><input type="checkbox" id="shrink"> Lower buildings by their collapse chance</label>
+<details class="sec" id="expSec" data-keep><summary>Export</summary><div class="secb">
+<button id="dl" type="button" class="alt">Save map as image</button>
+<div class="row"><div><button id="pdf" type="button" class="alt">Report (PDF)</button></div><div><button id="csv" type="button" class="alt">Table (CSV)</button></div></div><p class="hint" id="repMsg">For the image, drag a box on the map, or click once for the whole view.</p></div></details>
+<div id="waveBox" hidden><details class="sec" id="waveSec" data-keep><summary>Seismic waves</summary><div class="secb">
+<button id="play" type="button" class="alt">Play wave animation</button>
+<div id="timeline"><input type="range" id="tl" min="0" max="100" value="0" aria-label="Time since the earthquake"><span id="tlT">0 s</span></div>
+<label class="chk"><input type="checkbox" id="warnOn"> Show warning time (colours)</label>
+<details id="warnCfg" class="in"><summary>Warning time settings</summary>
+<div class="row"><div><label for="delay">Alert delay (s)</label><input id="delay" type="number" min="0" max="60" value="5"></div><div><label for="detR">Nearest sensor (km)</label><input id="detR" type="number" min="1" max="200" value="10"></div></div>
+<p class="hint">Warning = S-wave arrival minus (P-wave time to a sensor + delay). P about 6 km/s, S about 3.5 km/s. A simple model, not a real alert system.</p></details></div></details></div>
+</section>
+</div>
+<p class="hint foot">Estimates for planning, not confirmed damage. Zoom in past street level to see individual buildings.</p>
+</aside><div id="resizer" role="separator" aria-orientation="vertical" aria-label="Resize the panel" tabindex="0" title="Drag to resize, double-click to reset"></div><div id="map">
+<div class="mapctl l"><button id="panel" type="button" class="alt" title="Hide or show the side panel" aria-pressed="true">Hide panel</button></div>
+<div class="mapctl"><button id="dispBtn" type="button" class="alt" aria-pressed="false" aria-controls="dispatch" title="Show or hide the dispatch panel">Dispatch<span class="badge" id="dispBadge"></span></button><button id="basemap" type="button" class="alt" title="Light or dark street map">Dark map</button><button id="theme" type="button" class="alt" title="Light or dark panel">Dark panel</button></div>
+<details class="maplegend" id="legend" open hidden><summary>Legend</summary>
+<div class="lg" id="lgHeat"><h3><span id="lgHeatT">Chance of heavy damage</span><span class="seg" role="group" aria-label="Colour the map by"><button type="button" id="heatDmg" aria-pressed="true">Damage</button><button type="button" id="heatPpl" aria-pressed="false">People</button></span></h3>
+<div class="ramp" id="heatRamp"></div><div class="rl"><span id="heatLo">low</span><span id="heatHi">high</span></div></div>
+<div class="lg" id="lgBld"><h3>Buildings (zoom in)</h3><div class="legend">
 <div><span style="background:var(--red)"></span>Severe damage or collapse risk</div>
 <div><span style="background:var(--yel)"></span>Moderate damage</div>
 <div><span style="background:var(--grn)"></span>Light damage</div>
-<div><span style="background:var(--blu)"></span>Little or no damage</div></div>
-<h2>Most at-risk neighbourhoods</h2><button id="worst" type="button" class="alt" hidden>Show worst-case priorities</button><div id="hots"></div>
-<h2>Map and export</h2><button id="v3d" type="button" class="alt">Switch to 3D view</button>
-<label class="chk"><input type="checkbox" id="shrink"> Lower buildings by their collapse chance</label>
-<p class="hint">3D shows each building at about 3 m per storey. The lowering option is a visual cue for expected collapse, not a prediction of how any building falls.</p>
-<button id="dl" type="button" class="alt">Save map as image</button>
-<div class="row"><div><button id="pdf" type="button" class="alt">Report (PDF)</button></div><div><button id="csv" type="button" class="alt">Table (CSV)</button></div></div><p class="hint" id="repMsg">The report has the scenario, summary with ranges, priorities, access, dispatch order, methods and caveats.</p><p class="hint">Drag a box to choose what to save. A click without dragging saves the whole view.</p>
-<div id="waveBox" hidden><h2>Seismic waves</h2>
-<button id="play" type="button" class="alt">Play wave animation</button>
-<div id="timeline"><input type="range" id="tl" min="0" max="100" value="0" aria-label="Time since the earthquake"><span id="tlT">0 s</span></div>
-<div class="row"><div><label for="delay">Alert delay (s)</label><input id="delay" type="number" min="0" max="60" value="5"></div><div><label for="detR">Nearest sensor (km)</label><input id="detR" type="number" min="1" max="200" value="10"></div></div>
-<label class="chk"><input type="checkbox" id="warnOn"> Show warning time (colours)</label>
-<p class="hint">Warning time = S-wave arrival minus (time for the P wave to reach a sensor + alert delay). P about 6 km/s, S about 3.5 km/s, distances from the hypocentre. A simple model, not a real alert system.</p></div>
-<h2>Responders</h2>
-<button id="resp" type="button" class="alt">Show hospitals, fire stations and roads</button><p class="hint" id="respMsg">Finds facilities and the road network for this area (first time needs internet, about a minute or two). Facilities in damaged buildings are greyed out.</p>
-<div id="respTools" hidden>
-<button id="acc" type="button" class="alt">Estimate hospital access for this quake</button><div id="accOut"></div>
-<label for="routeFrom">Route to priority areas from</label><select id="routeFrom"><option value="nearest:fire_station">nearest working fire station</option><option value="nearest:hospital">nearest working hospital</option><option value="nearest:police">nearest working police station</option></select>
-<p class="hint">Press <b>Route</b> next to a neighbourhood above. Red parts of a route are streets that debris may block.</p>
-<h2>Dispatch order</h2><div class="row"><div><label for="tFire">Fire teams</label><input id="tFire" type="number" min="0" max="50" value="2"></div><div><label for="tPol">Police</label><input id="tPol" type="number" min="0" max="50" value="2"></div><div><label for="tAmb">Ambulances</label><input id="tAmb" type="number" min="0" max="50" value="2"></div></div>
-<button id="disp" type="button" class="alt">Suggest dispatch order</button><div id="dispOut"></div></div></div>
-<p class="hint">Estimates for planning, not confirmed damage. Zoom in past street level to see individual buildings.</p>
-</aside><div id="map"><div class="mapctl"><button id="theme" type="button" class="alt" title="Light or dark map">Dark</button></div></div></div>
+<div><span style="background:var(--blu)"></span>Little or no damage</div></div></div>
+<div class="lg" id="lgFac" hidden><h3>Facilities</h3><div class="fgrid" id="facKinds"></div></div>
+<div class="lg" id="lgAcc" hidden><h3>Minutes to a working hospital</h3><div class="ramp" style="background:linear-gradient(90deg,#3aa655,#a6c23b 14%,#f2b705 29%,#e67e22 57%,#d7263d)"></div><div class="rl"><span>0</span><span>20</span><span>40</span><span>70+</span></div></div>
+<div class="lg" id="lgRoute" hidden><h3>Route</h3><div><span class="rt-line"></span>Fastest route</div><div><span class="rt-line r"></span>Streets that debris may block</div></div>
+<div class="lg" id="lgWarn" hidden><h3>Warning time before strong shaking</h3><div class="ramp" style="background:linear-gradient(90deg,#d7263d,#e67e22 12%,#f2b705 25%,#a6c23b 50%,#3aa655)"></div><div class="rl"><span>0 s</span><span>10 s</span><span>40 s+</span></div></div>
+</details></div>
+<aside id="dispatch" aria-label="Dispatch">
+<div class="dh">
+<div class="dht"><span class="lconn" id="lConn" title="Connecting"></span><h1>Dispatch</h1><span class="dsub" id="dSub">Connecting…</span><button type="button" class="icon" id="dClose" aria-label="Close the dispatch panel" title="Close">✕</button></div>
+<div class="dtools"><button type="button" class="alt" id="dAlertB" aria-expanded="false" aria-controls="dAlert">Send alert</button><button type="button" class="alt" id="dLinkB" aria-expanded="false" aria-controls="dLink">Phone link</button><button type="button" class="alt" id="dDemoB" aria-expanded="false" aria-controls="dDemo">Demo</button></div>
+<div class="dpop" id="dAlert" hidden>
+<label for="aMsg">Message</label><textarea id="aMsg" maxlength="400"></textarea>
+<div class="row"><div><label for="aRad">Radius (km)</label><input id="aRad" type="number" min="0.5" max="500" step="0.5" value="10"></div>
+<div><label for="aLvl">Level</label><select id="aLvl"><option value="danger">Danger (red)</option><option value="warning">Warning (amber)</option></select></div></div>
+<button id="aPick" type="button" class="alt">Centre: the epicentre (press to pick)</button>
+<button id="aSend" type="button">Send to phones in the circle</button><p class="hint" id="aOut">Phones inside the dashed circle get a full-screen alert with sound.</p><div id="aHist"></div></div>
+<div class="dpop" id="dLink" hidden>
+<label for="lUrl">Link phones open</label><input id="lUrl" type="url" spellcheck="false"><div id="qr"></div><p class="hint" id="lUrlHint"></p></div>
+<div class="dpop" id="dDemo" hidden>
+<button id="lSim" type="button" class="alt" style="margin-top:0">Add 20 made-up SOS calls</button>
+<div class="row"><div><button id="lClrSim" type="button" class="alt">Remove made-up</button></div><div><button id="lClr" type="button" class="alt">Clear everything</button></div></div>
+<p class="hint">Made-up calls fall where the model expects damage and are marked "demo".</p></div>
+<div class="dtabs" role="tablist" aria-label="SOS calls by status">
+<button type="button" role="tab" data-f="open" aria-selected="true">Open<b id="cOpen">0</b></button>
+<button type="button" role="tab" data-f="enroute" aria-selected="false">En route<b id="cEnroute">0</b></button>
+<button type="button" role="tab" data-f="done" aria-selected="false">Done<b id="cDone">0</b></button></div>
+</div>
+<div class="dlist" id="dList" role="listbox" aria-label="SOS calls"></div>
+<div class="ddet" id="dDet" hidden></div>
+<div class="dtoast" id="dToast" role="status" hidden></div>
+</aside></div>
 <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script>window.maplibregl||document.write('<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"><\/script>')</script>
 <script>
@@ -150,7 +289,7 @@ const TYPE={URM:'Masonry (unreinforced)',RC_LOW:'Concrete frame, low-rise',RC_MI
 const USE={residential:'Residential',office:'Office / commercial / civic',retail:'Retail',hotel:'Hotel',education:'School / college',medical:'Medical',industrial:'Factory / industrial',warehouse:'Warehouse / storage',religious:'Religious',entertainment:'Entertainment / sports',outbuilding:'Shed / outbuilding',large:'Large building, use unknown'};
 function optNum(m){const o={};for(const [k,id] of Object.entries(m)){const v=$(id).value;if(v!==''&&!isNaN(+v))o[k]=+v}return o}
 const pct=v=>Math.round(v*100)+'%';
-const SRC={label:'from map data',label_height:'from mapped height',google:'measured from satellite heights',guess:'estimated',guess_unstable:'estimated',satellite_model:'modelled from footprint and surroundings'};
+const SRC={google_over_label:'from satellite heights; the map label disagreed',label:'from map data',label_height:'from mapped height',google:'measured from satellite heights',guess:'estimated',guess_unstable:'estimated',satellite_model:'modelled from footprint and surroundings'};
 const TOD={night:'night',day:'daytime',commute:'evening commute'};
 const TYPE_SHORT={URM:'masonry',RC_LOW:'concrete frame, low-rise',RC_MID:'concrete frame, mid-rise'};
 function typeLine(p){
@@ -158,23 +297,31 @@ function typeLine(p){
   const parts=[['URM',p.p_URM],['RC_LOW',p.p_RC_LOW],['RC_MID',p.p_RC_MID]].filter(x=>x[1]>=0.05).sort((a,b)=>b[1]-a[1]);
   return 'Likely '+parts.map(([k,v],i)=>(i?'':'')+TYPE_SHORT[k]+' ('+pct(v)+')').join('; ');
 }
-let map,epi,pins=[],lastRun=null,hot=[],selecting=null,selBox=null,runId=0,is3d=false,runNo=0,cov=null,ctl=null,moveT=null,bldPop=null,routePop=null;
+let map,epi,pins=[],lastRun=null,hot=[],selecting=null,selBox=null,runId=0,is3d=false,runNo=0,cov=null,ctl=null,moveT=null,curPop=null;
+const SM=2.8;
+const PIN_OFF={top:[0,4],'top-left':[0,4],'top-right':[0,4],bottom:[0,-42],'bottom-left':[0,-42],'bottom-right':[0,-42],left:[12,-20],right:[-12,-20]};   // popup tip just above/below the pin
+// street map looks: light by default whatever the panel theme; "dark" is the same tiles dimmed (no third-party dark tiles: they need a key)
+const BASE={light:{'raster-saturation':-0.7,'raster-opacity':.8,'raster-brightness-max':1,'raster-contrast':0},dark:{'raster-saturation':-1,'raster-opacity':1,'raster-brightness-max':.42,'raster-contrast':.3}};                                // metres per storey, the same value the model uses
+// One popup at a time: opening any popup (building, facility, priority, route) closes the one before, so cards never stack on each other.
+function openPop(ll,html,opts){closePop();const p=curPop=new maplibregl.Popup(opts||{}).setLngLat(ll).setHTML(html).addTo(map);p.on('close',()=>{if(curPop===p)curPop=null});return p}
+function closePop(){if(curPop){const p=curPop;curPop=null;p.remove()}}
 // results tied to one run (access circles, route, waves, warning colours) must not linger on the map after the next run
 function clearRunLayers(){
   ['acc','route','routeRisk','waves','warn'].forEach(id=>{const s=map&&map.getSource(id);if(s)s.setData(EMPTY)});
-  if(routePop){routePop.remove();routePop=null}
+  closePop();$('lgAcc').hidden=true;$('lgRoute').hidden=true;
   stopWaves();$('accOut').innerHTML='';$('dispOut').innerHTML='';
+  acc={run:0,p:null};$('routeMsg').innerHTML='Press <b>Route</b> next to a neighbourhood.';
   if(respReady)loadFacilities().catch(()=>{});        // damage of facility buildings changes with the run
 }
 fetch('/api/meta').then(r=>r.json()).then(m=>{
-  if(m.empty){$('areaMsg').innerHTML='<b>No area loaded yet.</b> Press <b>Load a new area</b>, then drag a box over a place (up to about 30 km across). Buildings are downloaded once and saved for next time.'}
+  if(m.empty){$('areaMsg').innerHTML='<b>No area loaded yet.</b> Press <b>Load a new area</b>, then drag a box over a place.'}
   listAreas();initTiles();
   $('lon').value=m.center[0].toFixed(4);$('lat').value=m.center[1].toFixed(4);
   map=new maplibregl.Map({container:'map',center:m.center,zoom:11,maxPitch:75,preserveDrawingBuffer:true,style:{version:8,
     sources:{osm:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OpenStreetMap contributors'}},
-    layers:[{id:'osm',type:'raster',source:'osm',paint:{'raster-saturation':-0.7,'raster-opacity':.8}}]}});
+    layers:[{id:'osm',type:'raster',source:'osm',paint:BASE.light}]}});
   map.on('click',e=>{if(!picking&&!e.originalEvent.shiftKey)return;$('lon').value=e.lngLat.lng.toFixed(4);$('lat').value=e.lngLat.lat.toFixed(4);placeEpi();if(picking)setTimeout(()=>{picking=false;pickUI()},0)});
-  map.on('load',()=>{placeEpi();setTheme(document.documentElement.dataset.theme||'light')});map.on('moveend',()=>{clearTimeout(moveT);moveT=setTimeout(loadBld,150)});
+  map.on('load',()=>{placeEpi();setBasemap(basemap)});new ResizeObserver(()=>map.resize()).observe($('map'));map.on('moveend',()=>{clearTimeout(moveT);moveT=setTimeout(loadBld,150)});map.on('zoomend',spreadPins);map.on('pitchend',spreadPins);map.on('rotateend',spreadPins);['mousedown','touchstart'].forEach(ev=>map.on(ev,stopOrbit));
 }).catch(e=>{$('err').textContent='The map failed to start: '+e.message+'. Check your connection or ad-blocker, then reload.'});
 function placeEpi(){if(!map)return;const p=[+$('lon').value,+$('lat').value];if(!isFinite(p[0])||!isFinite(p[1])||Math.abs(p[1])>90)return;
   if(!epi){const el=document.createElement('div');el.style.cursor='grab';el.innerHTML='<div class="epi"></div>';epi=new maplibregl.Marker({element:el,draggable:true}).setLngLat(p).addTo(map);epi.on('dragend',()=>{const l=epi.getLngLat();$('lon').value=l.lng.toFixed(4);$('lat').value=l.lat.toFixed(4)})}else epi.setLngLat(p)}
@@ -237,16 +384,15 @@ function drawRupture(f){
   map.addLayer({id:'rup-line',type:'line',source:'rup',paint:{'line-color':mapInk(),'line-width':2,'line-dasharray':[2,1]}});
 }
 function show(d){
-  if(map.getSource('cells')){map.getSource('cells').setData(d.cells)}
+  if(map.getSource('cells')){map.getSource('cells').setData(d.cells);applyHeat(d)}
   else{
     map.addSource('bld',{type:'geojson',data:{type:'FeatureCollection',features:[]}});map.addSource('far',{type:'geojson',data:{type:'FeatureCollection',features:[]}});map.addSource('cells',{type:'geojson',data:d.cells});
-    // Damage layer: every 500 m cell is a soft disc coloured by its own mean damage state. (A density heatmap saturated to solid
-    // red over a big city: it showed how many cells overlap, not how damaged they are.)
-    map.addLayer({id:'heat',type:'circle',source:'cells',maxzoom:16,layout:{'circle-sort-key':['get','mean_ds']},paint:{
-      'circle-color':['interpolate',['linear'],['get','mean_ds'],0,COL[0],1,COL[1],2,COL[2],3,COL[3]],
-      'circle-radius':['interpolate',['exponential',2],['zoom'],9,5,10,9,11,18,13,66,15,240],
-      'circle-blur':1,
-      'circle-opacity':['interpolate',['linear'],['zoom'],12,.3,16,.08]}});
+    // Heat map: a fine grid (100-500 m) of mean chance of heavy damage (or people at risk), drawn as a smoothed surface that fades out
+    // once individual buildings can be seen. The 500 m cells in d.cells only carry the priority pins.
+    map.addSource('heat',{type:'geojson',data:d.heat});
+    map.addLayer({id:'heat',type:'heatmap',source:'heat',maxzoom:17,paint:{'heatmap-intensity':2.1,'heatmap-weight':heatWeight(),'heatmap-radius':heatRadius(d),
+      'heatmap-color':['interpolate',['linear'],['heatmap-density'],0,'rgba(58,166,85,0)',.08,'rgba(58,166,85,.35)',.3,'rgba(166,194,59,.55)',.5,'rgba(242,183,5,.65)',.75,'rgba(230,126,34,.75)',1,'rgba(215,38,61,.85)'],
+      'heatmap-opacity':['interpolate',['linear'],['zoom'],14,.9,16.5,0]}});
     map.addLayer({id:'bld',type:'fill',source:'bld',minzoom:15,paint:{
       'fill-color':['match',['get','cat'],0,COL[0],1,COL[1],2,COL[2],COL[3]],'fill-opacity':.85}});
     map.addLayer({id:'bld-line',type:'line',source:'bld',minzoom:15,paint:{'line-color':mapInk(),'line-width':.5,'line-opacity':.5}});
@@ -259,32 +405,29 @@ function show(d){
     const BL=['bld3d','far3d','bld'];
     map.on('click',async e=>{   // details are fetched on click so the map only downloads what it draws
       if(e.originalEvent.shiftKey||picking||selecting)return;
+      if(map.getLayer('fac-c')&&map.queryRenderedFeatures(e.point,{layers:['fac-c']}).length)return;      // a facility dot sits on its building: the facility card wins
       const f=map.queryRenderedFeatures(e.point,{layers:['bldv-3d','bldv-2d','bld3d','far3d','bld'].filter(id=>map.getLayer(id)&&map.getLayoutProperty(id,'visibility')!=='none')})[0];
       if(!f||f.id==null)return;
-      if(bldPop)bldPop.remove();
-      const pop=bldPop=new maplibregl.Popup().setLngLat(e.lngLat).setHTML('Loading…').addTo(map);
+      const pop=openPop(e.lngLat,'Loading…');
       try{
         const r=await fetch(`/api/building/${f.id}?run=${runNo}`),p=await r.json();
         if(!r.ok)throw new Error(typeof p.detail==='string'?p.detail:'Could not load this building.');
         const hz=lastRun?lastRun.hz:hazard;     // the hazard of the run on the map, not whatever the selector shows now
+        if(curPop!==pop)return;                 // another card was opened while this one loaded
         pop.setHTML(`<b>${CAT[p.cat]}</b><br>${USE[p.use]?USE[p.use]+'<br>':''}${typeLine(p)}<br>${p.levels} storey${p.levels>1?'s':''}${SRC[p.levels_src]?' ('+SRC[p.levels_src]+')':''}<br>`+
           `${p.mmi!=null?`Shaking: MMI ${p.mmi} (${p.pga} g)${p.vs30?', soil Vs30 '+p.vs30+' m/s':''}`:`${hz==='flood'?'Water depth':'Peak gust'}: ${p.intensity} ${hz==='flood'?'m':'m/s'}`}<br>Chance of heavy damage: ${pct(p.p_extensive_mean!=null?p.p_extensive_mean:p.p_extensive)}${p.p_extensive_p90!=null?' (up to '+pct(p.p_extensive_p90)+' in a bad case)':''}<br>Chance of collapse: ${pct(p.p_collapse)}<br>`+
           `Est. occupants (${TOD[lastRun?lastRun.tod:'night']}): ${p.occupants} (about ${Math.round(p.risk)} at risk)`);
-      }catch(err){pop.setHTML(esc(err.message))}
+      }catch(err){if(curPop===pop)pop.setHTML(esc(err.message))}
     });
     BL.concat(['bldv-3d','bldv-2d']).forEach(id=>{map.on('mouseenter',id,()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave',id,()=>map.getCanvas().style.cursor='')});
   }
   drawRupture(d.rupture||d.track);
-  if(bldPop){bldPop.remove();bldPop=null}clearRunLayers();
+  closePop();clearRunLayers();
   tileMode=false;syncVis();setupTiles(d);
   setTimeout(()=>{prepareWaves(d);shakeNow(d.summary.max_mmi||0)},0);
   pins.forEach(m=>m.remove());pins=[];hot=[];$('hots').innerHTML='';
-  const s=d.summary;
-  const rows=[['Buildings assessed',s.buildings],['Severe damage or collapse risk',s.severe],['Moderate damage or worse',s.heavy],
-    ['Expected collapses',s.expected_collapses],...(s.casualties?[['Estimated deaths',s.casualties.deaths],['Estimated injured',s.casualties.injury_1+s.casualties.injury_2+s.casualties.injury_3]]:[]),['People at risk ('+(TOD[s.time_of_day]||'night')+')',s.people_at_risk],...(s.peak||[['Peak shaking (g)',s.max_pga],['Peak intensity (MMI)',s.max_mmi]]),...(s.vs30_median!=null?[['Soil stiffness (Vs30)',(s.soil||'').startsWith('USGS')?s.vs30_median+' m/s':'flat '+s.vs30_median+' m/s']]:[])]
-  const prK='People at risk ('+(TOD[s.time_of_day]||'night')+')';
-  $('sum').innerHTML=`<div class="key"><span>${prK}</span><b>${Number(s.people_at_risk).toLocaleString()}</b></div>`+
-    rows.filter(r=>r[0]!==prK).map(([k,v])=>`<div class="stat"><span>${k}</span><b>${typeof v==='number'?v.toLocaleString():v}</b></div>`).join('')+dataNotes(s);
+  renderSummary();
+  $('legend').hidden=false;setHeatUI();
   const run=++runId;
   lastData=d;mcRep=null;worstOn=false;
   $('unc').innerHTML='';$('worst').hidden=true;$('worst').textContent='Show worst-case priorities';$('worst').classList.remove('on');
@@ -292,6 +435,59 @@ function show(d){
   $('out').hidden=false;scnFold();resetBld();loadBld();
   if(d.uncertainty_job)pollUnc(run,d.run);
 }
+// ---- heat map: damage (absolute scale, so a weak quake looks weak) or people at risk (relative to the busiest places) ----
+let heatMode='dmg',heatRef=1;
+const HEAT_PE=0.6;                                  // chance of heavy damage that already counts as the top of the scale
+function heatWeight(){return heatMode==='dmg'?['interpolate',['linear'],['get','pe'],0,0,HEAT_PE,1]:['min',1,['/',['get','r'],heatRef]]}
+// radius in pixels that covers a fixed ground distance (2.6 grid spacings), so the surface looks the same at every zoom: it doubles with
+// each zoom level, like the ground does. With HEAT_K a uniform field of weight 1 comes out at density 1 (measured at zoom 10.5 to 13.5
+// by drawing the density as grey: 0.47 at intensity 1, so intensity 2.1)
+function heatRadius(d){
+  const sp=(d.heat&&d.heat.spacing_m)||200,f=d.cells.features[0],lat=f?f.geometry.coordinates[1]:28,k=2.6*sp/(156543.03*Math.cos(lat*Math.PI/180));
+  return ['interpolate',['exponential',2],['zoom'],8,k*256,17,k*131072];
+}
+function applyHeat(d){
+  const r=d.heat.features.map(f=>f.properties.r).filter(v=>v>0).sort((a,b)=>a-b);heatRef=Math.max(1,r.length?r[Math.min(r.length-1,Math.floor(r.length*.98))]:1);   // red = the busiest 2% of squares
+  map.getSource('heat').setData(d.heat);map.setPaintProperty('heat','heatmap-radius',heatRadius(d));map.setPaintProperty('heat','heatmap-weight',heatWeight());
+}
+function setHeatUI(){
+  const dmg=heatMode==='dmg';
+  $('heatDmg').setAttribute('aria-pressed',dmg);$('heatPpl').setAttribute('aria-pressed',!dmg);
+  $('lgHeatT').textContent=dmg?'Chance of heavy damage':'People at risk';
+  $('heatLo').textContent=dmg?'0%':'few';$('heatHi').textContent=dmg?Math.round(HEAT_PE*100)+'% or more':'most';
+  $('heatRamp').style.background='linear-gradient(90deg,rgba(58,166,85,.35),rgba(166,194,59,.6) 30%,rgba(242,183,5,.7) 50%,rgba(230,126,34,.8) 75%,rgba(215,38,61,.9))';
+}
+function setHeatMode(m){heatMode=m;setHeatUI();if(map&&map.getLayer('heat'))map.setPaintProperty('heat','heatmap-weight',heatWeight())}
+$('heatDmg').onclick=()=>setHeatMode('dmg');$('heatPpl').onclick=()=>setHeatMode('ppl');
+// ---- summary: the few figures people act on, ranges under them once the Monte Carlo is done; the rest folds under "More numbers" ----
+function renderSummary(){
+  const s=lastRun&&lastRun.s;if(!s)return;
+  const t=lastRun.ranges||null,f=v=>Math.round(v).toLocaleString();
+  const rg=k=>t&&t[k]?`<small>${f(t[k].p10)} to ${f(t[k].p90)}</small>`:'';
+  const row=(k,v,r)=>`<div class="stat"><span>${k}</span><b>${typeof v==='number'?v.toLocaleString():v}${r||''}</b></div>`;
+  const prK='People at risk ('+(TOD[s.time_of_day]||'night')+')',pk=s.peak||[['Peak shaking (g)',s.max_pga],['Peak intensity (MMI)',s.max_mmi]],c=s.casualties;
+  $('sum').innerHTML=`<div class="key"><span>${prK}</span><b>${Number(s.people_at_risk).toLocaleString()}</b>${t?`<span>likely range ${f(t.people_at_risk.p10)} to ${f(t.people_at_risk.p90)} (${t.n||200} simulations)</span>`:''}</div>`+
+    row('Buildings likely heavily damaged',s.expected_heavy!=null?s.expected_heavy:s.heavy)+
+    row('Expected collapses',s.expected_collapses,rg('expected_collapses'))+
+    (c?row('Estimated deaths',c.deaths,rg('deaths'))+row('Estimated injured',c.injury_1+c.injury_2+c.injury_3,rg('injuries')):'')+
+    (pk[1]?row(pk[1][0],pk[1][1]):'');
+  const dn=dataNotes(s);
+  if(dn.warn.length)$('sum').insertAdjacentHTML('beforeend',`<p class="hint">${dn.warn.join('<br>')}</p>`);   // real warnings stay in view
+  $('moreBody').innerHTML=row('Buildings assessed',s.buildings)+row('Moderate damage or worse (buildings)',s.heavy,rg('moderate_or_worse'))+row('Severe damage by expected damage state',s.severe)+
+    (pk[0]?row(pk[0][0],pk[0][1]):'')+(s.vs30_median!=null?row('Soil stiffness (Vs30)',(s.soil||'').startsWith('USGS')?s.vs30_median+' m/s':'flat '+s.vs30_median+' m/s'):'')+
+    (t?'<p class="hint">Ranges are the 10th to 90th percentile. The spread comes from uncertain shaking, building strength, construction type and population; the fragility spread (&plusmn;25%) is an assumption until the curves are calibrated.</p>':'');
+  $('notesBody').innerHTML=dn.info.length?`<p class="hint">${dn.info.join('<br>')}</p>`:'<p class="hint">No notes for this run.</p>';
+}
+// ---- results tabs ----
+const TABS=['sum','pri','resp','map'];
+function tab(name,focus){
+  TABS.forEach(t=>{const b=$('tab-'+t),on=t===name;b.setAttribute('aria-selected',on);b.tabIndex=on?0:-1;$('pane-'+t).hidden=!on;if(on){const d=b.querySelector('.dot');if(d)d.remove()}});
+  if(focus)$('tab-'+name).focus();
+}
+// a small dot on a tab whose content changed while another tab was open (e.g. ranges finished, access ready)
+function flag(name){const b=$('tab-'+name);if(b.getAttribute('aria-selected')!=='true'&&!b.querySelector('.dot'))b.insertAdjacentHTML('beforeend','<span class="dot" aria-label="(updated)"></span>')}
+TABS.forEach((t,i)=>{const b=$('tab-'+t);b.onclick=()=>tab(t);
+  b.onkeydown=e=>{const k={ArrowRight:1,ArrowLeft:-1}[e.key];if(k){e.preventDefault();tab(TABS[(i+k+TABS.length)%TABS.length],true)}}});
 // priority pins/list: expected values from the quick run, or worst-case (90th percentile) once the Monte Carlo is done
 let lastData=null,mcRep=null,worstOn=false;
 function drawPriority(run){
@@ -300,22 +496,41 @@ function drawPriority(run){
   const known=p=>p.measured!=null?`<br><span class="hint">Storeys known for ${pct(p.measured)} of the buildings here</span>`:'';
   const cardHtml=(p,n)=>worst?`<b>${n?n+' (worst case '+p.rank+')':'Worst case '+p.rank}</b><br>${p.n} buildings<br>People at risk: ${p.risk.toLocaleString()} expected-case median, up to ${p.risk90.toLocaleString()} in a bad case`
     :`<b>${n?n+' (priority '+p.rank+')':'Priority '+p.rank}</b><br>${p.n} buildings, ${p.heavy} moderately damaged or worse, ${p.severe} severe<br>About ${p.risk.toLocaleString()} people at risk${p.dist_km!=null?'<br>'+p.dist_km+' km from the epicentre / track point':''}${known(p)}`;
-  const rowHtml=(p,n)=>worst?`<b>${p.rank}</b> ${n?n+': ':''}up to ${p.risk90.toLocaleString()} at risk (median ${p.risk.toLocaleString()})`:`<b>${p.rank}</b> ${n?n+': ':''}${p.risk.toLocaleString()} people at risk, ${p.heavy} moderate or worse`;
+  // list rows: place name on top (filled in when the lookup returns), numbers in one short muted line under it
+  const rowHtml=(p,n)=>`<b>${p.rank}</b> ${n||'Priority '+p.rank}<span class="sub">${worst?`up to ${p.risk90.toLocaleString()} at risk (median ${p.risk.toLocaleString()})`:`${p.risk.toLocaleString()} at risk · ${p.heavy.toLocaleString()} moderate or worse`}</span>`;
   const items=worst?mcRep.worst_case_cells.map(w=>({p:{rank:w.rank,n:w.n,risk:w.risk_p50,risk90:w.risk_p90},c:[w.lon,w.lat]}))
     :lastData.cells.features.filter(f=>f.properties.rank).sort((a,b)=>a.properties.rank-b.properties.rank).map(f=>({p:f.properties,c:f.geometry.coordinates}));
   items.forEach(({p,c})=>{
     hot.push({rank:p.rank,c});
-    const el=document.createElement('div');el.className='pin';el.textContent=p.rank;if(worst)el.classList.add('worst');
-    const pop=new maplibregl.Popup({offset:16}).setHTML(cardHtml(p,null));
-    const mk=new maplibregl.Marker({element:el}).setLngLat(c).setPopup(pop).addTo(map);pins.push(mk);
+    const el=document.createElement('div');el.className='pinw';el.style.zIndex=20-p.rank;
+    const pin=document.createElement('div');pin.className='pin'+(worst?' worst':'');pin.textContent=p.rank;el.appendChild(pin);
+    const ref={p,c,name:null,pop:null,b:null};
+    ref.open=()=>{ref.pop=openPop(c,cardHtml(p,ref.name),{offset:PIN_OFF})};
+    el.addEventListener('click',ev=>{ev.stopPropagation();ref.open()});          // a pin is not also a click on the building under it
+    const mk=new maplibregl.Marker({element:el,anchor:'bottom'}).setLngLat(c).addTo(map);pins.push(mk);
     const b=document.createElement('button');b.className='hot';b.innerHTML=rowHtml(p,null);
-    b.onclick=()=>{map.flyTo({center:c,zoom:Math.max(map.getZoom(),15)});if(!pop.isOpen())mk.togglePopup()};
-    const wrap=document.createElement('div');wrap.style.display='flex';wrap.appendChild(b);
-    if(respReady&&!worst){const rt=document.createElement('button');rt.className='rt';rt.textContent='Route';rt.onclick=()=>showRoute(p.rank);wrap.appendChild(rt)}
+    b.onclick=()=>{map.flyTo({center:c,zoom:Math.max(map.getZoom(),15)});ref.open()};
+    const wrap=document.createElement('div');wrap.className='prow';wrap.appendChild(b);
+    if(respReady&&!worst){const rt=document.createElement('button');rt.type='button';rt.className='rt';rt.textContent='Route';rt.setAttribute('aria-label','Route to priority '+p.rank);rt.onclick=()=>showRoute(p.rank,rt);wrap.appendChild(rt)}
     $('hots').appendChild(wrap);
-    refs.push({p,c,pop,b});
+    ref.b=b;refs.push(ref);
   });
-  nameAreas(run,refs,cardHtml,rowHtml);
+  spreadPins();nameAreas(run,refs,cardHtml,rowHtml);
+}
+// Pins that would sit on top of each other at this zoom are fanned out around their true spot (nudged by at most one pin size or two),
+// the higher priority keeping the exact place. Redone on every zoom, so zooming in brings them back to where they belong.
+function spreadPins(){
+  if(!map||!pins.length)return;const placed=[],D=32,R=[0,1,2].map(k=>(k+1)*D*.85);
+  pins.forEach(mk=>{
+    const b=map.project(mk.getLngLat());let best=[0,0];
+    search:for(let ring=-1;ring<R.length;ring++){
+      for(let a=0;a<(ring<0?1:8);a++){
+        const o=ring<0?[0,0]:[Math.cos(-Math.PI/2+a*Math.PI/4)*R[ring],Math.sin(-Math.PI/2+a*Math.PI/4)*R[ring]];
+        if(placed.every(q=>Math.hypot(q[0]-(b.x+o[0]),q[1]-(b.y+o[1]))>=D)){best=o;break search}
+      }
+    }
+    mk.setOffset(best);placed.push([b.x+best[0],b.y+best[1]]);
+  });
 }
 $('worst').onclick=()=>{worstOn=!worstOn;$('worst').textContent=worstOn?'Show expected priorities':'Show worst-case priorities';$('worst').classList.toggle('on',worstOn);drawPriority(++runId)};
 let uncTok=0;
@@ -327,24 +542,28 @@ async function pollUnc(run,simRun){
       const r=await fetch('/api/uncertainty/'+simRun);if(!r.ok)throw new Error('lost');const j=await r.json();
       if(my!==uncTok)return;
       if(j.state==='error'){box.innerHTML='<p class="hint">Ranges could not be computed.</p>';return}
-      if(j.state==='done'){mcRep=j;showRanges(j);return}
+      if(j.state==='done'){showRanges(j);return}
       box.innerHTML=`<p class="hint">${esc(j.message||'Computing uncertainty…')}</p><div class="prog"><i style="width:${Math.round((j.progress||0)*100)}%"></i></div>`;
     }catch(e){box.innerHTML='';return}
     await new Promise(ok=>setTimeout(ok,1000));
   }
 }
 function showRanges(j){
-  const t=j.totals,f=v=>Math.round(v).toLocaleString();
-  $('unc').innerHTML=`<h2>Ranges (${j.n} simulations)</h2>`+[['People at risk',t.people_at_risk],['Expected collapses',t.expected_collapses],['Moderate damage or worse (buildings)',t.moderate_or_worse],...(t.deaths?[['Estimated deaths',t.deaths],['Estimated injured',t.injuries]]:[])]
-    .map(([k,v])=>`<div class="stat"><span>${k}</span><b>${f(v.p10)} to ${f(v.p90)}</b></div>`).join('')+
-    `<p class="hint">10th to 90th percentile, median ${f(t.people_at_risk.p50)} people. The spread comes from uncertain shaking, building strength, construction type and population. Fragility spread is an assumption (±25%) until the curves are calibrated.</p>`;
-  $('worst').hidden=false;if(lastRun)lastRun.ranges=t;
+  $('unc').innerHTML='';mcRep=j;
+  if(lastRun){lastRun.ranges={...j.totals,n:j.n};renderSummary()}
+  $('worst').hidden=false;flag('sum');
 }
 
 // ---- responders: facilities, access, routes, dispatch ----
 const FAC_COL={hospital:'#d7263d',clinic:'#e8798a',ambulance:'#8e44ad',fire_station:'#e67e22',police:'#2c5aa0',shelter:'#2e8b57',open_space:'#9cc9a8',school:'#b39b2e'};
 const FAC_NAME={hospital:'Hospital',clinic:'Clinic',ambulance:'Ambulance station',fire_station:'Fire station',police:'Police station',shelter:'Shelter / assembly point',open_space:'Open space (possible shelter)',school:'School (possible shelter)'};
 let respReady=false;
+const FAC_SHORT={hospital:'Hospital',clinic:'Clinic',ambulance:'Ambulance',fire_station:'Fire station',police:'Police',shelter:'Shelter',open_space:'Open space',school:'School'};
+// the kinds drawn on the map; clinics, shelters, schools and open spaces are many, so they are off until switched on in the legend
+const facOn=new Set(['hospital','fire_station','police','ambulance']);
+const facFilter=()=>['in',['get','kind'],['literal',[...facOn]]];
+$('facKinds').innerHTML=Object.keys(FAC_NAME).map(k=>`<label class="fk"><input type="checkbox" data-k="${k}"${facOn.has(k)?' checked':''}><i style="background:${FAC_COL[k]}"></i>${FAC_SHORT[k]}</label>`).join('')+'<label class="fk" style="grid-column:1/3"><i style="background:#8a949c"></i>May not work (damaged building)</label>';
+$('facKinds').addEventListener('change',e=>{const k=e.target.dataset.k;if(!k)return;e.target.checked?facOn.add(k):facOn.delete(k);if(map&&map.getLayer('fac-c'))map.setFilter('fac-c',facFilter())});
 function ensureRespLayers(){
   if(map.getSource('fac'))return;
   map.addSource('fac',{type:'geojson',data:EMPTY});map.addSource('acc',{type:'geojson',data:EMPTY});map.addSource('route',{type:'geojson',data:EMPTY});map.addSource('routeRisk',{type:'geojson',data:EMPTY});
@@ -352,11 +571,11 @@ function ensureRespLayers(){
     'circle-color':['interpolate',['linear'],['get','minutes'],0,'#3aa655',10,'#a6c23b',20,'#f2b705',40,'#e67e22',70,'#d7263d']}},map.getLayer('bld')?'bld':undefined);
   map.addLayer({id:'route-line',type:'line',source:'route',paint:{'line-color':'#2c5aa0','line-width':4,'line-dasharray':[2,1]}});
   map.addLayer({id:'route-risk',type:'line',source:'routeRisk',paint:{'line-color':'#d7263d','line-width':6}});
-  map.addLayer({id:'fac-c',type:'circle',source:'fac',paint:{'circle-radius':['interpolate',['linear'],['zoom'],11,3,15,7,17,10],
+  map.addLayer({id:'fac-c',type:'circle',source:'fac',filter:facFilter(),paint:{'circle-radius':['interpolate',['linear'],['zoom'],11,3,15,7,17,10],
     'circle-color':['case',['get','may_not_work'],'#8a949c',['match',['get','kind'],'hospital',FAC_COL.hospital,'clinic',FAC_COL.clinic,'ambulance',FAC_COL.ambulance,'fire_station',FAC_COL.fire_station,'police',FAC_COL.police,'shelter',FAC_COL.shelter,'open_space',FAC_COL.open_space,FAC_COL.school]],
     'circle-stroke-color':'#fff','circle-stroke-width':1.2,'circle-opacity':['case',['get','may_not_work'],.7,.95]}});
   map.on('click','fac-c',e=>{const p=e.features[0].properties;
-    new maplibregl.Popup().setLngLat(e.lngLat).setHTML(`<b>${esc(p.name||FAC_NAME[p.kind])}</b><br>${FAC_NAME[p.kind]}${p.beds?`, ${p.beds} beds`:''}${lastRun&&p.kind!=='open_space'?`<br>Chance its building is heavily damaged: ${pct(+p.p_damaged)}${p.may_not_work===true||p.may_not_work==='true'?'<br><b>May not be working.</b>':''}`:''}`).addTo(map)});
+    openPop(e.lngLat,`<b>${esc(p.name||FAC_NAME[p.kind])}</b><br>${FAC_NAME[p.kind]}${p.beds?`, ${p.beds} beds`:''}${lastRun&&p.kind!=='open_space'?`<br>Chance its building is heavily damaged: ${pct(+p.p_damaged)}${p.may_not_work===true||p.may_not_work==='true'?'<br><b>May not be working.</b>':''}`:''}`)});
   map.on('mouseenter','fac-c',()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave','fac-c',()=>map.getCanvas().style.cursor='');
 }
 // one poller for every background job; stops (instead of looping forever) when the server no longer knows the job
@@ -368,6 +587,15 @@ async function waitJob(id,msgEl,lost){
     if(j){miss=0;msgEl.innerHTML=`${esc(j.message||'Working…')}<div class="prog"><i style="width:${Math.round((j.progress||0)*100)}%"></i></div>`;
       if(j.state==='done')return j.result;if(j.state==='error')throw new Error(j.error||'Failed');}
     await new Promise(ok=>setTimeout(ok,1000))}}
+// A 409 means the server no longer has what this page shows: it restarted (uvicorn --reload does that on every saved file) or a newer run
+// replaced it. Say so where the user is looking, and put the page back in a state from which the next press works.
+function onConflict(msg){
+  acc={run:0,p:null};
+  if(/Prepare the responder/i.test(msg)){respReady=false;$('respTools').hidden=true;$('routeBox').hidden=true;$('lgFac').hidden=true;
+    document.querySelectorAll('.prow .rt').forEach(b=>b.remove());$('respMsg').textContent='The streets and facilities are not loaded on the server. Press the button above.';tab('resp')}
+  else $('err').textContent=msg+' Press Run simulation.';
+}
+async function failOf(r,fallback){const msg=await errOf(r,fallback);if(r.status===409)onConflict(msg);return msg}
 // readable message from a failed response: FastAPI sends a string, or a list of field errors for invalid input
 async function errOf(r,fallback){
   const d=await r.json().catch(()=>({}));
@@ -385,41 +613,71 @@ $('resp').onclick=async()=>{
   try{
     const r=await fetch('/api/responders/prepare',{method:'POST'});if(!r.ok)throw new Error(await errOf(r,'Could not start.'));
     ensureRespLayers();const res=await waitJob((await r.json()).job,m);
-    await loadFacilities();respReady=true;$('respTools').hidden=false;if(lastData)drawPriority(++runId);
-    const k=res.facilities||{};m.innerHTML=`Found ${k.hospital||0} hospitals, ${k.clinic||0} clinics, ${k.fire_station||0} fire stations, ${k.police||0} police stations and ${k.shelter||0} shelters; ${res.road_segments.toLocaleString()} street segments.`+(res.notes&&res.notes.length?'<br>'+res.notes.map(esc).join('<br>'):'')
-      +'<br><span class="fac-dot" style="background:#d7263d"></span>hospital <span class="fac-dot" style="background:#e67e22"></span>fire <span class="fac-dot" style="background:#2c5aa0"></span>police <span class="fac-dot" style="background:#2e8b57"></span>shelter <span class="fac-dot" style="background:#8a949c"></span>may not work';
+    await loadFacilities();respReady=true;$('respTools').hidden=false;$('routeBox').hidden=false;$('lgFac').hidden=false;if(lastData)drawPriority(++runId);
+    const k=res.facilities||{};m.innerHTML=`Found ${k.hospital||0} hospitals, ${k.clinic||0} clinics, ${k.fire_station||0} fire stations, ${k.police||0} police stations and ${k.shelter||0} shelters; ${res.road_segments.toLocaleString()} street segments. Routes are under <b>Priorities</b>.`+(res.notes&&res.notes.length?'<br>'+res.notes.map(esc).join('<br>'):'');
+    flag('pri');
   }catch(e){m.textContent=e.message}
   $('resp').disabled=false;
 };
-$('acc').onclick=async()=>{
-  const o=$('accOut');o.innerHTML='';if(!lastRun){o.textContent='Run a simulation first.';return}
-  $('acc').disabled=true;
-  try{
-    const r=await fetch('/api/access',{method:'POST'});if(!r.ok)throw new Error(await errOf(r,'Could not start.'));const d=await r.json();
-    const res=await waitJob(d.job,o);const ar=await fetch('/api/access/'+res.run);if(!ar.ok)throw new Error(await errOf(ar,'Could not load the access result.'));const a=await ar.json();
+// Hospital access for the run on the map. Routes and dispatch need it, so they start it themselves instead of failing (the
+// server used to answer 409 until "Estimate hospital access" had been pressed for that very run). One request per run is
+// shared by everyone who asks; msgEl shows the progress of the caller that started it.
+let acc={run:0,p:null};
+function accessFor(msgEl){
+  if(acc.p&&acc.run===runNo)return acc.p;
+  const run=runNo;
+  const p=(async()=>{
+    if(!run)throw new Error('Run a simulation first.');
+    const r=await fetch('/api/access?run='+run,{method:'POST'});if(!r.ok)throw new Error(await failOf(r,'Could not start.'));
+    const res=await waitJob((await r.json()).job,msgEl);
+    const ar=await fetch('/api/access/'+res.run);if(!ar.ok)throw new Error(await errOf(ar,'Could not load the access result.'));const a=await ar.json();
+    if(run!==runNo)throw new Error('A newer simulation replaced this one.');
     ensureRespLayers();map.getSource('acc').setData(a.cells);await loadFacilities();
-    const s=a.summary;o.innerHTML=`<div class="stat"><span>People within 30 min of a working hospital</span><b>${pct(s.share_within_30min)}</b></div><div class="stat"><span>People with no route to one</span><b>${pct(s.share_no_access)}</b></div><div class="stat"><span>Typical travel time</span><b>${s.median_minutes} min</b></div><div class="stat"><span>Hospitals that may not work</span><b>${s.hospitals_may_not_work} of ${s.hospitals}</b></div><div class="stat"><span>Streets likely blocked</span><b>${s.streets_likely_blocked.toLocaleString()} of ${s.streets.toLocaleString()}</b></div><p class="hint">Green to red circles: minutes to the nearest working hospital. Debris blocking follows Anelli et al. (2020): a street is blocked if under 3.5 m stays free; not validated against observed blockages.</p>`;
-  }catch(e){o.textContent=e.message}
+    showAccess(a.summary);$('lgAcc').hidden=false;return a;
+  })();
+  acc={run,p};
+  p.catch(()=>{if(acc.p===p)acc={run:0,p:null}});        // a failed attempt can be retried
+  return p;
+}
+function showAccess(s){
+  $('accOut').innerHTML=`<div class="stat"><span>People within 30 min of a working hospital</span><b>${pct(s.share_within_30min)}</b></div><div class="stat"><span>People with no route to one</span><b>${pct(s.share_no_access)}</b></div><div class="stat"><span>Typical travel time</span><b>${s.median_minutes} min</b></div><div class="stat"><span>Hospitals that may not work</span><b>${s.hospitals_may_not_work} of ${s.hospitals}</b></div><div class="stat"><span>Streets likely blocked</span><b>${s.streets_likely_blocked.toLocaleString()} of ${s.streets.toLocaleString()}</b></div><p class="hint" title="Debris blocking follows Anelli et al. (2020): a street is blocked if under 3.5 m stays free. Not validated against observed blockages.">Blocking: Anelli et al. (2020), not validated.</p>`;
+  flag('resp');
+}
+$('acc').onclick=async()=>{
+  const o=$('accOut');if(!lastRun){o.textContent='Run a simulation first.';return}
+  $('acc').disabled=true;
+  try{await accessFor(o)}catch(e){o.textContent=e.message}
   $('acc').disabled=false;
 };
-async function showRoute(rank){
+async function showRoute(rank,btn){
+  const m=$('routeMsg');if(btn){btn.disabled=true;btn.textContent='…'}
   try{
-    const r=await fetch(`/api/route?rank=${rank}&source=${encodeURIComponent($('routeFrom').value)}`);
-    if(!r.ok)throw new Error(await errOf(r,'No route.'));const g=await r.json();
+    if(!(acc.p&&acc.run===runNo))m.textContent='Estimating hospital access and likely blocked streets first…';
+    await accessFor(m);
+    m.textContent='Finding a route…';
+    const r=await fetch(`/api/route?rank=${rank}&source=${encodeURIComponent($('routeFrom').value)}&run=${runNo}`);
+    if(!r.ok)throw new Error(await failOf(r,'No route.'));const g=await r.json();$('lgRoute').hidden=false;
     ensureRespLayers();map.getSource('route').setData(g);
     map.getSource('routeRisk').setData({type:'FeatureCollection',features:g.properties.risky_segments.map(c=>({type:'Feature',geometry:{type:'LineString',coordinates:c},properties:{}}))});
     const c=g.geometry.coordinates,b=c.reduce((bb,p)=>bb.extend(p),new maplibregl.LngLatBounds(c[0],c[0]));map.fitBounds(b,{padding:80,duration:700});
-    if(routePop)routePop.remove();
-    routePop=new maplibregl.Popup().setLngLat(c[Math.floor(c.length/2)]).setHTML(`<b>From ${esc(g.properties.facility)}</b><br>${g.properties.time_min} min free-flow (${g.properties.expected_time_min} min with likely blockages)<br>Chance the route is open: ${pct(g.properties.p_open)}`).addTo(map);
-  }catch(e){$('accOut').textContent=e.message}
+    const txt=`<b>From ${esc(g.properties.facility)}</b><br>${g.properties.time_min} min free-flow (${g.properties.expected_time_min} min with likely blockages)<br>Chance the route is open: ${pct(g.properties.p_open)}`;
+    openPop(c[Math.floor(c.length/2)],txt);
+    m.innerHTML=`Priority ${rank}: `+txt.replace(/<br>/g,'. ');
+  }catch(e){m.textContent=e.message}
+  if(btn){btn.disabled=false;btn.textContent='Route'}
 }
 $('disp').onclick=async()=>{
-  const o=$('dispOut');o.textContent='Working…';
+  const o=$('dispOut');$('disp').disabled=true;
   try{
-    const r=await fetch('/api/dispatch',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fire_station:+$('tFire').value,police:+$('tPol').value,ambulance:+$('tAmb').value})});
-    if(!r.ok)throw new Error(await errOf(r,'Check the numbers.'));const d=await r.json();
-    o.innerHTML=d.assignments.length?`<table class="d"><tr><th>#</th><th>Team</th><th>Go to</th><th>Min</th><th>Open</th></tr>`+d.assignments.map(a=>`<tr><td>${a.order}</td><td>${esc(a.team)}<br><span class="hint">${esc(a.facility)}</span></td><td>area ${a.cell_rank} (${a.people_at_risk.toLocaleString()} at risk)</td><td>${a.travel_min}</td><td>${pct(a.p_route_open==null?0:a.p_route_open)}</td></tr>`).join('')+'</table><p class="hint">Teams go where they reach the most people at risk per minute. Suggestion for planning only.</p>':'No working facilities of those kinds were found.';
+    const body=JSON.stringify({run:runNo,fire_station:num('tFire','Fire teams',0,50),police:num('tPol','Police',0,50),ambulance:num('tAmb','Ambulances',0,50)});
+    if(!(acc.p&&acc.run===runNo))o.textContent='Estimating hospital access and likely blocked streets first…';
+    await accessFor(o);
+    o.textContent='Working…';
+    const r=await fetch('/api/dispatch',{method:'POST',headers:{'Content-Type':'application/json'},body});
+    if(!r.ok)throw new Error(await failOf(r,'Check the numbers.'));const d=await r.json();
+    o.innerHTML=d.assignments.length?d.assignments.map(a=>`<div class="drow"><b>${a.order}</b><div>${esc(a.team)} to priority ${a.cell_rank} <span class="hint">(${a.people_at_risk.toLocaleString()} at risk)</span><p class="hint">from ${esc(a.facility)} · ${a.travel_min} min · route open ${pct(a.p_route_open==null?0:a.p_route_open)}</p></div></div>`).join('')+'<p class="hint">Teams go where they reach the most people at risk per minute. Suggestion for planning only.</p>':'No working facilities of those kinds were found.';
   }catch(e){o.textContent=e.message}
+  $('disp').disabled=false;
 };
 
 
@@ -474,7 +732,7 @@ function drawWaves(t){
 }
 function stopWaves(){playing=false;cancelAnimationFrame(raf);$('play').textContent='Play wave animation'}
 function prepareWaves(d){
-  if(!lastRun||lastRun.hz!=='earthquake'){$('waveBox').hidden=true;$('warnOn').checked=false;if(map.getLayer('warn-c'))map.setLayoutProperty('warn-c','visibility','none');return}
+  if(!lastRun||lastRun.hz!=='earthquake'){$('waveBox').hidden=true;$('warnOn').checked=false;$('lgWarn').hidden=true;if(map.getLayer('warn-c'))map.setLayoutProperty('warn-c','visibility','none');return}
   $('waveBox').hidden=false;ensureWaveLayers();
   const far=Math.max(...d.cells.features.map(f=>hyp(f.geometry.coordinates)));timeEnd=Math.max(20,Math.ceil(far/VS*1.1));
   $('tl').max=timeEnd;$('tl').value=0;$('tlT').textContent='0 s';
@@ -485,7 +743,7 @@ function refreshWarn(){
   if(!lastData||!map.getSource('warn'))return;
   const f=lastData.cells.features.map(c=>({type:'Feature',geometry:c.geometry,properties:{sec:Math.round(warnSeconds(c.geometry.coordinates))}}));
   map.getSource('warn').setData({type:'FeatureCollection',features:f});
-  map.setLayoutProperty('warn-c','visibility',$('warnOn').checked?'visible':'none');
+  map.setLayoutProperty('warn-c','visibility',$('warnOn').checked?'visible':'none');$('lgWarn').hidden=!$('warnOn').checked;
 }
 ['delay','detR'].forEach(i=>$(i).addEventListener('change',refreshWarn));$('warnOn').onchange=refreshWarn;
 $('tl').oninput=()=>{playing=false;cancelAnimationFrame(raf);$('play').textContent='Play wave animation';drawWaves(+$('tl').value)};
@@ -495,21 +753,29 @@ $('play').onclick=()=>{
   const step=now=>{if(!playing)return;const t=from+(now-t0)/1000*speed;if(t>=timeEnd){drawWaves(timeEnd);playing=false;$('play').textContent='Play wave animation';return}drawWaves(t);raf=requestAnimationFrame(step)};
   raf=requestAnimationFrame(step);
 };
-// dark theme (remembered in localStorage when available)
-// map lines drawn in "ink" (rupture, building outlines) must flip with the theme or they vanish on the dark basemap
-const mapInk=()=>document.documentElement.dataset.theme==='dark'?'#e6e6e6':'#1c2630';
-function setTheme(t,save){
-  document.documentElement.dataset.theme=t;$('theme').textContent=t==='dark'?'Light':'Dark';
-  if(save)try{localStorage.setItem('quake-theme',t)}catch(e){}
+// Two switches: the panel theme (light/dark UI) and the street map (light/dark). Dark panel no longer darkens the map: the map is
+// the thing being read, so it stays light unless asked. Both are remembered in localStorage when available.
+let basemap='light';try{basemap=localStorage.getItem('quake-basemap')==='dark'?'dark':'light'}catch(e){}
+const mapInk=()=>basemap==='dark'?'#e6e6e6':'#1c2630';       // lines drawn over the map (rupture, building outlines) follow the street map
+function setBasemap(b,save){
+  basemap=b;$('basemap').textContent=b==='dark'?'Light map':'Dark map';
+  if(save)try{localStorage.setItem('quake-basemap',b)}catch(e){}
   if(!map)return;
-  if(map.getLayer('osm')){map.setPaintProperty('osm','raster-brightness-max',t==='dark'?0.32:1);map.setPaintProperty('osm','raster-brightness-min',0);map.setPaintProperty('osm','raster-contrast',t==='dark'?0.15:0)}
+  $('map').style.background=b==='dark'?'#141415':'#fafafa';
+  if(map.getLayer('osm'))for(const [k,v] of Object.entries(BASE[b]))map.setPaintProperty('osm',k,v);
   [['rup-fill','fill-color'],['rup-line','line-color'],['bld-line','line-color'],['bldv-line','line-color']].forEach(([id,p])=>{if(map.getLayer(id))map.setPaintProperty(id,p,mapInk())});
 }
-$('theme').textContent=document.documentElement.dataset.theme==='dark'?'Light':'Dark';
+function setTheme(t,save){
+  document.documentElement.dataset.theme=t;$('theme').textContent=t==='dark'?'Light panel':'Dark panel';
+  if(save)try{localStorage.setItem('quake-theme',t)}catch(e){}
+}
+$('theme').textContent=document.documentElement.dataset.theme==='dark'?'Light panel':'Dark panel';$('basemap').textContent=basemap==='dark'?'Light map':'Dark map';
+if(window.matchMedia&&matchMedia('(max-width:700px)').matches)$('legend').open=false;   // phones: legend starts folded so it does not cover the small map
 $('theme').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark',true);
+$('basemap').onclick=()=>setBasemap(basemap==='dark'?'light':'dark',true);
 // shake effect: short, decaying jitter scaled to the shaking strength; off by default and off for reduced-motion users
 const reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
-if(reduce){$('shake').disabled=true;$('shakeHint').textContent='Disabled because your system asks for reduced motion.'}
+if(reduce){$('shake').disabled=true;$('shakeHint').hidden=false;$('shakeHint').textContent='Disabled because your system asks for reduced motion.'}
 function shakeNow(mmi){
   if(!$('shake').checked||reduce)return;const el=$('map');el.classList.add('shaking');const amp=Math.max(0,Math.min(7,(mmi-4)*1.3)),t0=performance.now(),dur=1100;
   const f=now=>{const k=(now-t0)/dur;if(k>=1){el.style.transform='';el.classList.remove('shaking');return}const a=amp*(1-k);el.style.transform=`translate(${(Math.random()*2-1)*a}px,${(Math.random()*2-1)*a}px)`;requestAnimationFrame(f)};requestAnimationFrame(f);
@@ -525,7 +791,7 @@ function selUI(){
   map.getCanvas().style.cursor=selecting?'crosshair':'';
   if(selecting){map.dragPan.disable();map.touchZoomRotate.disable()}else{map.dragPan.enable();map.touchZoomRotate.enable()}
 }
-document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;if(selecting){selecting=null;selUI()}if(picking){picking=false;pickUI()}});
+document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;stopOrbit();if(selecting){selecting=null;selUI()}if(picking){picking=false;pickUI()}});
 (function(){
   const div=$('map');let start=null;
   const pos=e=>{const r=div.getBoundingClientRect();return[Math.max(0,Math.min(e.clientX-r.left,r.width)),Math.max(0,Math.min(e.clientY-r.top,r.height))]};
@@ -555,12 +821,12 @@ const pollJob=(id,m)=>waitJob(id,m,'Lost track of the download (was the server r
 function applyArea(d){
   tileInfo=null;tileMode=false;tileAttrs=null;lastData=null;if(map&&map.getSource('bldv'))removeTileLayers();setTimeout(initTiles,500);
   uncTok++;runId++;runNo=0;resetBld();pins.forEach(p=>p.remove());pins=[];hot=[];lastRun=null;$('hots').innerHTML='';$('out').hidden=true;
-  ['cells','bld','far','rup','fac'].forEach(id=>{const src=map.getSource(id);if(src)src.setData({type:'FeatureCollection',features:[]})});
+  ['cells','heat','bld','far','rup','fac'].forEach(id=>{const src=map.getSource(id);if(src)src.setData({type:'FeatureCollection',features:[]})});
   // the responder layer belongs to the old area: hide its tools until it is prepared again for this one
-  respReady=false;clearRunLayers();$('respTools').hidden=true;$('waveBox').hidden=true;
-  $('respMsg').textContent='Finds facilities and the road network for this area (first time needs internet, about a minute or two). Facilities in damaged buildings are greyed out.';
-  if(bldPop){bldPop.remove();bldPop=null}
-  $('scn').open=true;$('err').textContent='';
+  respReady=false;clearRunLayers();$('respTools').hidden=true;$('routeBox').hidden=true;$('waveBox').hidden=true;$('legend').hidden=true;$('lgFac').hidden=true;
+  $('respMsg').textContent='Finds facilities and roads for this area. Facilities in damaged buildings are greyed out.';
+  closePop();stopOrbit();
+  $('scn').open=true;$('areaSec').open=true;$('err').textContent='';
   map.fitBounds([[d.bounds[0],d.bounds[1]],[d.bounds[2],d.bounds[3]]],{padding:40,duration:800});
   $('lon').value=d.center[0].toFixed(4);$('lat').value=d.center[1].toFixed(4);placeEpi();
 }
@@ -583,7 +849,7 @@ $('refresh').onclick=()=>{if(lastBox)loadArea(...lastBox,true)};
 async function listAreas(){
   try{
     const d=await (await fetch('/api/areas')).json();
-    $('areaBox').hidden=d.areas.length<1;
+    $('areaBox').hidden=d.areas.length<1;const act=d.areas.find(a=>a.id===d.active);$('areaSum').textContent=act?`${act.name} · ${act.buildings.toLocaleString()}`:'';
     $('areaSel').innerHTML=d.areas.map(a=>`<option value="${esc(a.id)}"${a.id===d.active?' selected':''}>${esc(a.name)} · ${a.buildings.toLocaleString()} buildings</option>`).join('');
   }catch(e){}
 }
@@ -633,23 +899,40 @@ function makePng(x,y,w,h,cb,maxW){
     setTimeout(()=>URL.revokeObjectURL(a.href),3000)});
 }
 const EMPTY={type:'FeatureCollection',features:[]};
-const h3=()=>$('shrink').checked?['*',['get','levels'],3,['-',1,['*',.8,['get','pc']]]]:['*',['get','levels'],3];
+const h3=()=>$('shrink').checked?['*',['get','levels'],SM,['-',1,['*',.8,['get','pc']]]]:['*',['get','levels'],SM];
 function set3d(on){
   is3d=on;resetBld();$('v3d').textContent=on?'Back to 2D view':'Switch to 3D view';$('v3d').classList.toggle('on',on);
   if(map.getLayer('bld3d')){syncVis();if(!on)map.getSource('far').setData(EMPTY)}
   map.easeTo(on?{pitch:60,bearing:-20,zoom:Math.max(map.getZoom(),15.5),duration:900}:{pitch:0,bearing:0,duration:700});
 }
-$('v3d').onclick=()=>{if(map)set3d(!is3d)};
+$('v3d').onclick=()=>{if(map){if(is3d)stopOrbit();set3d(!is3d)}};
+// Orbit: the bearing turns at 3, 6 or 12 degrees a second (one turn in 2 minutes, 1 minute or 30 s) around the middle of the view. Starting it
+// from 2D first tilts into 3D. The user takes over by dragging the map, or with Esc; zooming does not stop it.
+let orbiting=false,orbitRaf=0;
+function stopOrbit(){if(!orbiting)return;orbiting=false;cancelAnimationFrame(orbitRaf);$('orbit').textContent='Orbit view';$('orbit').classList.remove('on');spreadPins();resetBld();loadBld()}
+function startOrbit(){
+  if(!map||orbiting)return;orbiting=true;$('orbit').textContent='Stop orbit';$('orbit').classList.add('on');
+  const go=()=>{
+    if(!orbiting)return;let last=performance.now(),n=0;
+    const step=now=>{if(!orbiting)return;const dt=Math.min(now-last,100)/1000;last=now;
+      map.setBearing(map.getBearing()+dt*(+$('orbitSpeed').value));if(++n%15===0)spreadPins();orbitRaf=requestAnimationFrame(step)};
+    orbitRaf=requestAnimationFrame(step);
+  };
+  if(is3d)go();else{set3d(true);map.once('moveend',go)}      // wait for the tilt to finish: a running ease would fight the rotation
+}
+$('orbit').onclick=()=>orbiting?stopOrbit():startOrbit();
 $('shrink').onchange=()=>{if(map&&map.getLayer('bld3d')){map.setPaintProperty('bld3d','fill-extrusion-height',h3());map.setPaintProperty('far3d','fill-extrusion-height',h3());if(map.getLayer('bldv-3d'))map.setPaintProperty('bldv-3d','fill-extrusion-height',h3t(),{validate:false})}};
+// notes under the summary: warnings ({warn}) stay visible; the routine data-source notes ({info}) go in a fold
 function dataNotes(s){
-  const n=[];
-  if(s.hazard_note)n.push('<b>'+esc(s.hazard_note)+'</b>');
+  const n=[],warn=[];
+  if(s.hazard_note)warn.push('<b>'+esc(s.hazard_note)+'</b>');
+  if(s.casualties&&s.casualties.pager_disagreement)warn.push(`<b>Our death estimate differs a lot from the independent USGS PAGER estimate (about ${s.casualties.pager_deaths.toLocaleString()}).</b>`);
   if(s.casualties)n.push(`<b>Casualty rates are Hazus values for US building types, mapped to Indian types by judgement.</b> Independent USGS PAGER estimate of deaths: about ${s.casualties.pager_deaths.toLocaleString()}${s.casualties.pager_disagreement?' (<b>our figure differs a lot from it</b>)':''}.`);
   if(s.storeys_measured_share!=null)n.push(`Storeys known for ${pct(s.storeys_measured_share)} of buildings (${esc(s.height_source||'')}); the rest are estimated.`);
   if(s.gm_models&&s.gm_models.length)n.push(`Shaking: ${esc(s.gm_models.join(' + '))} (${s.gm_region==='himalaya'?'Himalayan region':'worldwide crustal'}); distance by ${esc(s.distance_method||'')}${s.mechanism&&s.mechanism!=='unspec'?', '+({ss:'strike-slip',rs:'reverse',ns:'normal'}[s.mechanism]):''}.`);
-  if(s.beyond_validity)n.push('<b>The epicentre is farther than these models are meant for (over 400 km); treat the result as rough.</b>');
+  if(s.beyond_validity)warn.push('<b>The epicentre is farther than these models are meant for (over 400 km); treat the result as rough.</b>');
   if(s.population_source)n.push(`People: ${esc(s.population_source)}${s.ghs_pop_total?`, area total about ${s.ghs_pop_total.toLocaleString()}`:''}.`);
-  return n.length?`<p class="hint">${n.join('<br>')}</p>`:'';
+  return {warn,info:n};
 }
 const esc=t=>String(t).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 async function nameAreas(run,refs,cardHtml,rowHtml){
@@ -660,7 +943,7 @@ async function nameAreas(run,refs,cardHtml,rowHtml){
       if(!res.ok||run!==runId)continue;
       const n=esc((await res.json()).name||'');
       if(!n||run!==runId)continue;
-      r.pop.setHTML(cardHtml(r.p,n));r.b.innerHTML=rowHtml(r.p,n);
+      r.name=n;r.b.innerHTML=rowHtml(r.p,n);if(r.pop&&r.pop===curPop)r.pop.setHTML(cardHtml(r.p,n));
     }catch(e){}
   }
 }
@@ -670,7 +953,7 @@ const wantTiles=new URLSearchParams(location.search).get('tiles')!=='0';
 let tileInfo=null,tileMode=false,tileAttrs=null,tilePoll=null;
 const catExpr=arr=>['match',['at',['id'],['literal',arr]],0,COL[0],1,COL[1],2,COL[2],COL[3]];   // 'at' on a numeric array is ~10x faster than slicing a string
 const pcExpr=arr=>['at',['id'],['literal',arr]];
-const h3t=()=>$('shrink').checked&&tileAttrs?['*',['get','levels'],3,['-',1,['*',.8,pcExpr(tileAttrs.pcArr)]]]:['*',['get','levels'],3];
+const h3t=()=>$('shrink').checked&&tileAttrs?['*',['get','levels'],SM,['-',1,['*',.8,pcExpr(tileAttrs.pcArr)]]]:['*',['get','levels'],SM];
 async function initTiles(){
   clearTimeout(tilePoll);if(!wantTiles)return;
   try{const s=await (await fetch('/api/tiles/status')).json();
@@ -683,7 +966,7 @@ function addTileLayers(){
   const L=tileInfo.layer;
   map.addLayer({id:'bldv-2d',type:'fill',source:'bldv','source-layer':L,minzoom:15,layout:{visibility:'none'},paint:{'fill-color':COL[3],'fill-opacity':.85}});
   map.addLayer({id:'bldv-line',type:'line',source:'bldv','source-layer':L,minzoom:15,layout:{visibility:'none'},paint:{'line-color':mapInk(),'line-width':.5,'line-opacity':.5}});
-  map.addLayer({id:'bldv-3d',type:'fill-extrusion',source:'bldv','source-layer':L,minzoom:13.5,layout:{visibility:'none'},paint:{'fill-extrusion-color':COL[3],'fill-extrusion-height':3,'fill-extrusion-base':0,'fill-extrusion-opacity':.92}});
+  map.addLayer({id:'bldv-3d',type:'fill-extrusion',source:'bldv','source-layer':L,minzoom:13.5,layout:{visibility:'none'},paint:{'fill-extrusion-color':COL[3],'fill-extrusion-height':SM,'fill-extrusion-base':0,'fill-extrusion-opacity':.92}});
 }
 function removeTileLayers(){['bldv-3d','bldv-line','bldv-2d'].forEach(i=>{if(map.getLayer(i))map.removeLayer(i)});if(map.getSource('bldv'))map.removeSource('bldv')}
 function syncVis(){
@@ -718,7 +1001,7 @@ function covered(){
   return [[v[0],v[1]],[v[0],v[3]],[v[2],v[1]],[v[2],v[3]]].every(p=>dist(p,cov.c)<=cov.r);   // view inside the complete circle
 }
 async function loadBld(){
-  if(!map||tileMode||!map.getSource('bld')||map.getZoom()<(is3d?13.5:15)||covered())return;
+  if(!map||orbiting||tileMode||!map.getSource('bld')||map.getZoom()<(is3d?13.5:15)||covered())return;
   if(ctl)ctl.abort();
   const my=ctl=new AbortController(),b=map.getBounds(),c=map.getCenter();
   const dx=(b.getEast()-b.getWest())*PAD,dy=(b.getNorth()-b.getSouth())*PAD;
@@ -748,7 +1031,254 @@ function scnSummary(){
   return `M${$('mag').value}, ${$('depth').value} km, ${t}`;
 }
 function scnUpdate(){$('scnSum').textContent=scnSummary()}
-function scnFold(){scnUpdate();$('scn').open=false}
+function scnFold(){scnUpdate();$('scn').open=false;$('areaSec').open=false}
 ['mag','depth','tod','hz','cHead','flScale'].forEach(i=>{$(i).addEventListener('input',scnUpdate);$(i).addEventListener('change',scnUpdate)});
 scnUpdate();
+// ---- panel: drag to resize (remembered), hide/show, and every folding group remembers whether it was open ----
+(function(){
+  const app=$('app'),side=$('side'),rz=$('resizer'),MIN=300,DEF=340,KEY='quake-side-w';
+  const max=()=>Math.max(MIN,Math.min(760,Math.round(innerWidth*.6)));
+  const set=w=>{w=Math.max(MIN,Math.min(max(),Math.round(w)));document.documentElement.style.setProperty('--side-w',w+'px');return w};
+  const save=w=>{try{localStorage.setItem(KEY,String(w))}catch(e){}};
+  let w0=DEF;try{w0=+localStorage.getItem(KEY)||DEF}catch(e){}
+  set(w0);
+  let drag=false;
+  rz.addEventListener('pointerdown',e=>{drag=true;rz.setPointerCapture(e.pointerId);document.body.classList.add('resizing');e.preventDefault()});
+  rz.addEventListener('pointermove',e=>{if(drag)set(e.clientX-side.getBoundingClientRect().left)});
+  const end=()=>{if(!drag)return;drag=false;document.body.classList.remove('resizing');save(Math.round(side.getBoundingClientRect().width))};
+  rz.addEventListener('pointerup',end);rz.addEventListener('pointercancel',end);
+  rz.addEventListener('dblclick',()=>{set(DEF);try{localStorage.removeItem(KEY)}catch(e){}});
+  rz.addEventListener('keydown',e=>{const d={ArrowLeft:-24,ArrowRight:24}[e.key];if(d){e.preventDefault();save(set(side.getBoundingClientRect().width+d))}else if(e.key==='Home'){e.preventDefault();set(DEF);try{localStorage.removeItem(KEY)}catch(_){}}});
+  window.addEventListener('resize',()=>{if(!app.classList.contains('nopanel'))set(side.getBoundingClientRect().width)});
+  $('panel').onclick=()=>{const hide=!app.classList.contains('nopanel');app.classList.toggle('nopanel',hide);$('panel').textContent=hide?'Show panel':'Hide panel';$('panel').setAttribute('aria-pressed',String(!hide))};
+  let st={};try{st=JSON.parse(localStorage.getItem('quake-open')||'{}')}catch(e){}
+  document.querySelectorAll('details[data-keep]').forEach(d=>{
+    if(d.id in st)d.open=!!st[d.id];
+    d.addEventListener('toggle',()=>{st[d.id]=d.open;try{localStorage.setItem('quake-open',JSON.stringify(st))}catch(e){}});
+  });
+})();
+// ---- dispatch panel (right): live phones, alerts and SOS calls from /sos (live.py). All state is in server memory. ----
+const LIVE={sos:new Map(),phones:new Map(),alerts:[],ws:null,up:false,centre:null,picking:false,seen:new Set(),sel:null,filter:'open',opts:new Map(),lan:null,snap:false};
+const LVL_COL={critical:'#d7263d',high:'#e67e22',medium:'#f2b705',low:'#3b7dd8'},LVL_R={critical:3,high:2,medium:1,low:0};
+const KIND_COL={fire_station:'#e67e22',ambulance:'#d7263d',police:'#2c5aa0'};
+const USE_S={residential:'home',office:'office',retail:'shop',education:'school',medical:'medical building',industrial:'factory',hotel:'hotel',religious:'place of worship',warehouse:'warehouse'};
+const ALERT_TXT={earthquake:'Strong earthquake shaking is expected in your area. Drop, cover and hold on. When the shaking stops, leave buildings carefully and go to open ground. Tap below for the way to the nearest safe place.',
+  flood:'Flooding is expected in your area. Move to higher ground or an upper floor of a strong building now. Do not walk or drive through flood water.',
+  cyclone:'A cyclone is approaching. Stay inside a strong building away from windows, or go to the nearest cyclone shelter now.'};
+const stOf=s=>s.status==='new'?'open':s.status==='assigned'?'enroute':'done';
+const ago=t=>{const m=Math.max(0,Math.round((Date.now()/1000-t)/60));return m<1?'now':m<60?m+' min':Math.floor(m/60)+' h '+(m%60)+' min'};
+const hm=t=>new Date(t*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+const who=s=>[s.trapped?'<span class="tagr">trapped</span>':'',s.injured?'<span class="tagr">injured</span>':'',s.people+(s.people>1?' people':' person')].filter(Boolean).join(' · ');
+
+// ---- open / close (remembered; closed by default on phones, where it covers the map) ----
+function dispOpen(on,save){
+  $('app').classList.toggle('nodisp',!on);$('dispBtn').setAttribute('aria-pressed',String(on));
+  if(save)try{localStorage.setItem('quake-disp',on?'1':'0')}catch(e){}
+}
+{let v=null;try{v=localStorage.getItem('quake-disp')}catch(e){}dispOpen(v==null?innerWidth>700:v==='1')}
+$('dispBtn').onclick=()=>dispOpen($('app').classList.contains('nodisp'),true);
+$('dClose').onclick=()=>dispOpen(false,true);
+// the three tool popovers: one open at a time
+const POPS={dAlertB:'dAlert',dLinkB:'dLink',dDemoB:'dDemo'};
+function pop(btn,force){Object.entries(POPS).forEach(([b,id])=>{const on=b===btn?(force!=null?force:$(id).hidden):false;$(id).hidden=!on;$(b).setAttribute('aria-expanded',String(on));$(b).classList.toggle('on',on)});
+  lvDrawArea();if(!$('dLink').hidden)lvQR()}
+Object.keys(POPS).forEach(b=>$(b).onclick=()=>pop(b));
+document.querySelectorAll('.dtabs button').forEach(b=>b.onclick=()=>{LIVE.filter=b.dataset.f;lvRender()});
+
+// ---- map layers ----
+const LIVE_IDS=['lv-area-f','lv-area-l','lv-route','lv-ph','lv-sos-halo','lv-sel','lv-sos'];
+function lvLayers(){
+  if(!map||!map.isStyleLoaded())return false;
+  if(!map.getSource('lvSos')){
+    ['lvArea','lvRoute','lvPh','lvSos'].forEach(id=>map.addSource(id,{type:'geojson',data:EMPTY}));
+    map.addLayer({id:'lv-area-f',type:'fill',source:'lvArea',paint:{'fill-color':'#d7263d','fill-opacity':.05}});
+    map.addLayer({id:'lv-area-l',type:'line',source:'lvArea',paint:{'line-color':'#d7263d','line-width':1.5,'line-dasharray':[3,2]}});
+    map.addLayer({id:'lv-route',type:'line',source:'lvRoute',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':'#e67e22','line-width':['case',['get','sel'],6,3.5],'line-opacity':['case',['get','sel'],1,.7]}});
+    map.addLayer({id:'lv-ph',type:'circle',source:'lvPh',paint:{'circle-radius':['interpolate',['linear'],['zoom'],10,3,15,6],'circle-color':['case',['get','safe'],'#2e8b57','#2c6ad8'],'circle-stroke-color':'#fff','circle-stroke-width':1.5}});
+    map.addLayer({id:'lv-sos-halo',type:'circle',source:'lvSos',filter:['==',['get','status'],'new'],paint:{'circle-radius':['interpolate',['linear'],['zoom'],10,10,15,20],'circle-color':['get','col'],'circle-opacity':.25,'circle-blur':.5}});
+    map.addLayer({id:'lv-sel',type:'circle',source:'lvSos',filter:['==',['get','id'],-1],paint:{'circle-radius':['interpolate',['linear'],['zoom'],10,11,15,17],'circle-color':'rgba(0,0,0,0)','circle-stroke-color':'#171717','circle-stroke-width':3}});
+    map.addLayer({id:'lv-sos',type:'circle',source:'lvSos',paint:{'circle-radius':['interpolate',['linear'],['zoom'],10,5,15,9],'circle-color':['case',['==',['get','status'],'resolved'],'#8a949c',['get','col']],
+      'circle-stroke-color':['case',['==',['get','status'],'assigned'],'#171717','#fff'],'circle-stroke-width':['case',['==',['get','status'],'assigned'],3,2]}});
+    map.on('click','lv-sos',e=>{const id=+e.features[0].properties.id;setTimeout(()=>{closePop();lvSelect(id,false)},0)});   // after the building popup, which it replaces
+    map.on('mouseenter','lv-sos',()=>map.getCanvas().style.cursor='pointer');map.on('mouseleave','lv-sos',()=>map.getCanvas().style.cursor='');
+    map.on('idle',liveOnTop);
+  }
+  liveOnTop();return true;
+}
+// buildings, facilities and routes are added later and would cover the live layers: move these back on top when that happens
+function liveOnTop(){if(!map||!map.getLayer('lv-sos'))return;const o=map.getLayersOrder();if(o[o.length-1]!=='lv-sos')LIVE_IDS.forEach(id=>map.moveLayer(id))}
+function lvCircle(lon,lat,km,n=72){const c=[];for(let i=0;i<=n;i++){const a=i/n*2*Math.PI;c.push([lon+km/(111.32*Math.cos(lat*Math.PI/180))*Math.cos(a),lat+km/110.54*Math.sin(a)])}return{type:'Feature',geometry:{type:'Polygon',coordinates:[c]},properties:{}}}
+function lvCentre(){return LIVE.centre||[+$('lon').value,+$('lat').value]}
+function lvDrawArea(){if(!lvLayers())return;const c=lvCentre(),show=!$('dAlert').hidden&&isFinite(c[0])&&isFinite(c[1]);
+  map.getSource('lvArea').setData(show?lvCircle(c[0],c[1],Math.max(.1,+$('aRad').value||10)):EMPTY)}
+
+// ---- render ----
+function lvRender(){
+  const all=[...LIVE.sos.values()],ph=[...LIVE.phones.values()],on=ph.filter(p=>p.online);
+  const by={open:[],enroute:[],done:[]};all.forEach(s=>by[stOf(s)].push(s));
+  by.open.sort((a,b)=>(LVL_R[b.level]-LVL_R[a.level])||(b.score-a.score)||(a.created-b.created));
+  by.enroute.sort((a,b)=>b.updated-a.updated);by.done.sort((a,b)=>b.updated-a.updated);
+  $('cOpen').textContent=by.open.length;$('cEnroute').textContent=by.enroute.length;$('cDone').textContent=by.done.length;
+  $('cOpen').classList.toggle('crit',by.open.some(s=>s.level==='critical'));
+  $('dispBadge').textContent=by.open.length||'';
+  $('dSub').textContent=`${on.length} phone${on.length===1?'':'s'} · ${ph.filter(p=>p.safe).length} safe`;
+  document.querySelectorAll('.dtabs button').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.f===LIVE.filter)));
+  const rows=by[LIVE.filter].slice(0,LIVE.filter==='done'?60:500);
+  const minute=Math.floor(Date.now()/60000),sig=LIVE.filter+'|'+LIVE.sel+'|'+minute+'|'+rows.map(s=>s.id+':'+s.status+':'+s.updated+':'+(s.moved||0)).join(',');
+  if(sig!==LIVE.listSig){LIVE.listSig=sig;const top=$('dList').scrollTop;
+    $('dList').innerHTML=rows.length?rows.map(lvRow).join(''):`<div class="dempty">${{open:LIVE.sos.size?'No open calls.':'No SOS calls yet.<br>Phones that open the <b>Phone link</b> can send one.',enroute:'No teams on the way.',done:'Nothing closed yet.'}[LIVE.filter]}</div>`;
+    $('dList').scrollTop=top}
+  lvDetail();
+  if(!lvLayers())return;
+  map.getSource('lvSos').setData({type:'FeatureCollection',features:all.map(s=>({type:'Feature',geometry:{type:'Point',coordinates:[s.lon,s.lat]},properties:{id:s.id,status:s.status,col:LVL_COL[s.level]||'#3b7dd8'}}))});
+  map.setFilter('lv-sel',['==',['get','id'],LIVE.sel==null?-1:LIVE.sel]);
+  map.getSource('lvPh').setData({type:'FeatureCollection',features:on.filter(p=>p.lat!=null&&!by.open.concat(by.enroute).some(s=>s.device===p.device)).map(p=>({type:'Feature',geometry:{type:'Point',coordinates:[p.lon,p.lat]},properties:{safe:!!p.safe}}))});
+  map.getSource('lvRoute').setData({type:'FeatureCollection',features:by.enroute.filter(s=>s.route).map(s=>({...s.route,properties:{sel:s.id===LIVE.sel}}))});
+}
+function lvRow(s){
+  const l2=s.status==='assigned'?`${esc(s.team||'Team')}${s.eta_min!=null?' · about '+Math.max(1,Math.round(s.eta_min))+' min':''}`:s.status==='resolved'?esc(s.resolution||'resolved'):who(s)+(s.note?' · “'+esc(s.note)+'”':'');
+  return `<button type="button" class="srow${s.id===LIVE.sel?' sel':''}" role="option" aria-selected="${s.id===LIVE.sel}" data-sid="${s.id}" id="srow-${s.id}"><i class="bar" style="background:${s.status==='resolved'?'var(--muted)':LVL_COL[s.level]}"></i>`+
+    `<span class="l1"><b>#${s.id}</b><em class="lvl ${s.status==='resolved'?'done':esc(s.level)}">${esc(s.level)}</em>${s.sim?'<em class="demo">demo</em>':''}</span><span class="tm">${ago(s.status==='new'?s.created:s.updated)}</span><span class="l2">${l2}</span></button>`;
+}
+function lvDetail(force){
+  const d=$('dDet'),s=LIVE.sel!=null&&LIVE.sos.get(LIVE.sel);
+  if(!s){d.hidden=true;LIVE.detSig=null;return}
+  const sig=s.id+':'+s.status+':'+s.updated+':'+(s.moved||0)+':'+Math.floor(Date.now()/60000);
+  if(!force&&sig===LIVE.detSig&&!d.hidden)return;
+  LIVE.detSig=sig;
+  d.hidden=false;const b=s.building;
+  const bl=b?`From a ${esc(USE_S[b.use]||'building')}${b.levels?', '+b.levels+' storeys':''}${b.p_collapse!=null?`: <b>${pct(b.p_collapse)}</b> chance of collapse, ${pct(b.p_extensive)} of heavy damage`:''}.`:'Not inside a mapped building.';
+  const loc=(s.accuracy_m!=null?`Location within about ${Math.round(s.accuracy_m)} m`:'Location accuracy unknown')+(s.demo_location?' · moved into the area for the demo':'');
+  let st='';
+  if(s.status==='new')st=`<h2>Send a team</h2><div id="dOpts">${lvOptsHtml(s)}</div>`;
+  else if(s.status==='assigned')st=`<div class="dstat"><b>${esc(s.team||'A team')}</b> is on the way${s.eta_min!=null?', about '+Math.max(1,Math.round(s.eta_min))+' min':''}.${s.route_note?'<br><span class="hint">'+esc(s.route_note)+'</span>':''}</div><h2>Send a different team instead</h2><div id="dOpts">${lvOptsHtml(s)}</div>`;
+  else st=`<div class="dstat">Closed ${hm(s.updated)}: ${esc(s.resolution||'resolved')}.</div>`;
+  d.innerHTML=`<div class="ddh"><b>SOS ${s.id}</b><em class="lvl ${s.status==='resolved'?'done':esc(s.level)}">${esc(s.level)}</em>${s.sim?'<em class="demo">demo</em>':''}<span class="tm">${hm(s.created)} · ${ago(s.created)==='now'?'just now':ago(s.created)+' ago'}</span><button type="button" class="icon" data-lv-close aria-label="Close details">✕</button></div>`+
+    `<p class="tags">${who(s)}</p>${s.note?`<p class="note" title="${esc(s.note)}">“${esc(s.note)}”</p>`:''}<p class="hint" style="margin-top:6px">${bl}<br>${loc}</p>${st}`+
+    `<div class="dacts"><button type="button" class="alt" data-lv-zoom>Zoom to</button>${s.status!=='resolved'?'<button type="button" class="alt" data-lv-done>Mark resolved</button>':''}</div>`;
+}
+function lvOptsHtml(s){
+  const o=LIVE.opts.get(s.id);
+  if(!o)return '<p class="hint">Finding the nearest teams…</p>';
+  if(o.error)return `<p class="hint">${esc(o.error)}</p>`;
+  const send=(k,f,label)=>`<button type="button" data-lv-send="${k}"${f!=null?` data-fac="${f}"`:''}>${label||'Send'}</button>`;
+  if(!o.options.length)return `<p class="hint">${esc(o.note||'No stations found.')}</p><div class="dacts">${send('fire_station',null,'Fire team')}${send('ambulance',null,'Ambulance')}${send('police',null,'Police')}</div>`;
+  const best=['fire_station','ambulance','police'].map(k=>o.options.find(x=>x.kind===k)).filter(Boolean),rest=o.options.filter(x=>!best.includes(x));
+  const row=x=>`<div class="opt"><i style="background:${KIND_COL[x.kind]}"></i><div><b>${esc(x.team)}</b><span title="${esc(x.name)}">${esc(x.name)}</span></div><span class="eta">${Math.max(1,Math.round(x.eta_min))} min</span>${send(x.kind,x.facility_id)}</div>`;
+  return best.map(row).join('')+(rest.length?`<details class="in"><summary style="font-size:12px;min-height:28px;color:var(--muted)">Next nearest stations</summary>${rest.map(row).join('')}</details>`:'')+
+    '<p class="hint">Driving times allow for streets that debris may block.</p>';
+}
+async function lvLoadOpts(id,force){
+  if(!force&&LIVE.opts.has(id))return;
+  LIVE.opts.delete(id);
+  let o;
+  try{const r=await fetch(`/api/live/sos/${id}/options`);if(!r.ok)throw new Error(await errOf(r,'Could not find teams.'));o=await r.json()}
+  catch(e){o={error:e.message}}
+  LIVE.opts.set(id,o);
+  if(LIVE.sel===id&&$('dOpts')){const s=LIVE.sos.get(id);if(s)$('dOpts').innerHTML=lvOptsHtml(s)}
+  if(o.error||!o.options.length)LIVE.opts.delete(id);           // shown once; asked again next time (streets may be loaded by then)
+}
+function lvSelect(id,fromList){
+  const s=LIVE.sos.get(id);if(!s)return;
+  LIVE.sel=id;LIVE.filter=stOf(s);dispOpen(true);if(Object.values(POPS).some(x=>!$(x).hidden))pop(null);lvRender();
+  if(s.status!=='resolved')lvLoadOpts(id);
+  if(map)map.flyTo({center:[s.lon,s.lat],zoom:Math.max(map.getZoom(),15.5),duration:600});
+  const row=$('srow-'+id);if(row&&!fromList)row.scrollIntoView({block:'nearest'});
+}
+$('dList').addEventListener('click',e=>{const r=e.target.closest('.srow');if(r)lvSelect(+r.dataset.sid,true)});
+$('dList').addEventListener('keydown',e=>{const k={ArrowDown:1,ArrowUp:-1}[e.key];if(!k)return;e.preventDefault();const rs=[...document.querySelectorAll('.srow')],i=rs.findIndex(r=>+r.dataset.sid===LIVE.sel),n=rs[Math.max(0,Math.min(rs.length-1,i+k))];if(n){lvSelect(+n.dataset.sid,true);n.focus()}});
+$('dDet').addEventListener('click',async e=>{
+  const s=LIVE.sos.get(LIVE.sel);if(!s)return;
+  if(e.target.closest('[data-lv-close]')){LIVE.sel=null;lvRender();return}
+  if(e.target.closest('[data-lv-zoom]')){map&&map.flyTo({center:[s.lon,s.lat],zoom:17});return}
+  if(e.target.closest('[data-lv-done]')){if(await lvPost(`/api/live/sos/${s.id}/resolve`,null,e.target.closest('button')))lvToast(`SOS ${s.id} marked resolved`);return}
+  const b=e.target.closest('[data-lv-send]');if(!b)return;
+  const body={kind:b.dataset.lvSend};if(b.dataset.fac)body.facility_id=+b.dataset.fac;
+  document.querySelectorAll('#dOpts button').forEach(x=>x.disabled=true);b.textContent='Sending…';
+  const r=await lvPost(`/api/live/sos/${s.id}/assign`,body);
+  if(!r){document.querySelectorAll('#dOpts button').forEach(x=>{x.disabled=false;if(x===b)x.textContent='Send'});return}
+  lvToast(`${r.team} sent to SOS ${r.id}`+(r.eta_min!=null?`, about ${Math.max(1,Math.round(r.eta_min))} min`:'')+(r.route_note?'. '+r.route_note:''),!!r.route_note);
+});
+async function lvPost(url,body,btn){
+  const t=btn&&btn.textContent;if(btn){btn.disabled=true;btn.textContent='Working…'}
+  try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});if(!r.ok)throw new Error(await errOf(r,'Request failed.'));return await r.json()}
+  catch(e){lvToast(e.message,true);return null}finally{if(btn&&btn.isConnected){btn.disabled=false;btn.textContent=t}}
+}
+function lvToast(msg,bad){const t=$('dToast');t.textContent=msg;t.className='dtoast'+(bad?' bad':'');t.hidden=false;clearTimeout(lvToast.t);lvToast.t=setTimeout(()=>t.hidden=true,bad?6000:3000)}
+
+// ---- live connection ----
+addEventListener('pointerdown',()=>{try{(lvBeep.ctx||(lvBeep.ctx=new (window.AudioContext||window.webkitAudioContext)())).resume()}catch(e){}},{once:true});
+function lvBeep(){try{const a=lvBeep.ctx||(lvBeep.ctx=new (window.AudioContext||window.webkitAudioContext)());[0,.22].forEach(d=>{const o=a.createOscillator(),g=a.createGain();o.frequency.value=880;g.gain.value=.06;o.connect(g).connect(a.destination);o.start(a.currentTime+d);o.stop(a.currentTime+d+.14)})}catch(e){}}
+function lvFlash(id){requestAnimationFrame(()=>{const r=$('srow-'+id);if(r){r.classList.remove('flash');void r.offsetWidth;r.classList.add('flash')}})}
+function lvConnect(){
+  const ws=LIVE.ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws/live?role=dashboard');
+  ws.onopen=()=>{LIVE.up=true;$('lConn').className='lconn on';$('lConn').title='Connected'};
+  ws.onclose=()=>{LIVE.up=false;$('lConn').className='lconn off';$('lConn').title='Reconnecting';$('dSub').textContent='Reconnecting…';setTimeout(lvConnect,2000)};
+  ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(_){return}
+    if(m.type==='snapshot'){LIVE.sos=new Map(m.sos.map(s=>[s.id,s]));LIVE.phones=new Map(m.phones.map(p=>[p.device,p]));LIVE.alerts=m.alerts||[];m.sos.forEach(s=>LIVE.seen.add(s.id));
+      if(LIVE.sel!=null&&!LIVE.sos.has(LIVE.sel))LIVE.sel=null;lvHist()}
+    else if(m.type==='sos'){const s=m.sos,old=LIVE.sos.get(s.id),fresh=!LIVE.seen.has(s.id);LIVE.seen.add(s.id);LIVE.sos.set(s.id,s);
+      if(old&&old.status!==s.status)LIVE.opts.delete(s.id);
+      if(fresh&&!s.sim){lvBeep();dispOpen(true);if(LIVE.filter!=='open')LIVE.filter='open';lvRender();lvFlash(s.id);return}
+      if(old&&s.id===LIVE.sel&&s.status!=='resolved'&&!LIVE.opts.has(s.id))lvLoadOpts(s.id)}
+    else if(m.type==='phone')LIVE.phones.set(m.phone.device,m.phone);
+    else if(m.type==='alert'){LIVE.alerts.push(m.alert);lvHist()}
+    lvRender()};
+}
+lvConnect();
+(function lvWait(){if(lvLayers()){lvRender();lvDrawArea()}else setTimeout(lvWait,300)})();
+setInterval(()=>{if(LIVE.sos.size)lvRender()},30000);
+// a new run changes building damage, blockages and so team times: forget suggestions computed for the old one
+const lvOldShow=typeof show==='function'?show:null;
+if(lvOldShow)show=function(){LIVE.opts.clear();const r=lvOldShow.apply(this,arguments);if(LIVE.sel!=null)lvLoadOpts(LIVE.sel,true);return r};
+
+// ---- alerts ----
+let aDirty=false;
+function lvDefaultMsg(){if(!aDirty)$('aMsg').value=ALERT_TXT[$('hz').value]||ALERT_TXT.earthquake}
+$('aMsg').addEventListener('input',()=>aDirty=true);$('hz').addEventListener('change',lvDefaultMsg);lvDefaultMsg();
+['aRad','lat','lon'].forEach(i=>$(i).addEventListener('input',lvDrawArea));['lat','lon'].forEach(i=>$(i).addEventListener('change',lvDrawArea));
+function lvPickLabel(){$('aPick').textContent=LIVE.centre?`Centre: ${LIVE.centre[1].toFixed(3)}, ${LIVE.centre[0].toFixed(3)} (press to move)`:'Centre: the epicentre (press to pick)'}
+$('aPick').onclick=()=>{
+  if(!map)return;
+  if(LIVE.picking){LIVE.picking=false;$('aPick').classList.remove('on');lvPickLabel();map.getCanvas().style.cursor='';return}
+  LIVE.picking=true;$('aPick').classList.add('on');$('aPick').textContent='Click the map to place the alert centre';map.getCanvas().style.cursor='crosshair';
+  map.once('click',e=>{if(!LIVE.picking)return;LIVE.picking=false;LIVE.centre=[e.lngLat.lng,e.lngLat.lat];$('aPick').classList.remove('on');map.getCanvas().style.cursor='';lvPickLabel();lvDrawArea()});
+};
+function lvHist(){$('aHist').innerHTML=LIVE.alerts.slice(-5).reverse().map(a=>`<div>${hm(a.sent)} · ${a.radius_km} km · ${a.reached!=null?`reached ${a.reached}/${a.inside}`:'sent'} · ${esc(a.level)}</div>`).join('')}
+$('aSend').onclick=async()=>{
+  const [lon,lat]=lvCentre(),b=$('aSend');if(!isFinite(lat)||!isFinite(lon)){$('aOut').textContent='Set the epicentre or pick a centre first.';return}
+  if(!$('aMsg').value.trim()){$('aOut').textContent='Write a message first.';return}
+  b.disabled=true;
+  try{const r=await fetch('/api/live/alert',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({lat,lon,radius_km:+$('aRad').value||10,message:$('aMsg').value,level:$('aLvl').value})});
+    if(!r.ok)throw new Error(await errOf(r,'Could not send the alert.'));const a=await r.json();
+    const online=[...LIVE.phones.values()].filter(p=>p.online).length;
+    $('aOut').innerHTML=a.inside?`Sent at ${hm(a.sent)}: reached <b>${a.reached}</b> of ${a.inside} phone${a.inside>1?'s':''} in the circle.`:
+      `No phones are inside the circle${online?` (${online} online elsewhere)`:''}. Phones that connect inside it in the next 30 minutes still get it.`;
+  }catch(e){$('aOut').textContent=e.message}
+  b.disabled=false;
+};
+
+// ---- demo tools ----
+$('lSim').onclick=async()=>{const r=await lvPost('/api/live/simulate',{n:20},$('lSim'));if(r){LIVE.filter='open';lvRender()}};
+$('lClrSim').onclick=()=>lvPost('/api/live/clear?sim_only=true',null,$('lClrSim'));
+$('lClr').onclick=()=>{if(confirm('Clear all SOS calls and alerts? Phones that sent an SOS will see it closed.'))lvPost('/api/live/clear',null,$('lClr'))};
+
+// ---- phone link and QR code. Phones need https for GPS: tools/https_proxy.py serves this server on https port 8443 ----
+let qrLib=null;
+async function lvQR(){
+  const v=$('lUrl').value,h=$('lUrlHint');
+  h.innerHTML=/localhost|127\.0\.0\.1/.test(v)?'A phone cannot open <b>localhost</b>. Use this laptop\'s network address.':
+    /^http:/.test(v)?'Over plain <b>http</b> phones will not share their location. Run <code>python tools/https_proxy.py</code> in a second terminal, then reload this page for the https link.':
+    'Scan with the phone camera. The first time, the phone warns about the certificate: choose <b>Advanced → Proceed</b> (Android) or <b>Show details → visit this website</b> (iPhone). Phones must be on the same Wi-Fi.';
+  try{if(!qrLib)qrLib=await new Promise((ok,no)=>{if(window.qrcode)return ok(window.qrcode);const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js';sc.onload=()=>ok(window.qrcode);sc.onerror=no;document.head.appendChild(sc)});
+    const q=qrLib(0,'M');q.addData(v);q.make();$('qr').innerHTML=q.createSvgTag({cellSize:4,margin:0,scalable:true})}catch(e){$('qr').innerHTML='<p class="hint">The QR code could not load; share the link instead.</p>'}
+}
+(async function(){
+  let u='';try{u=localStorage.getItem('quake-phone-url')||''}catch(e){}
+  let a={};try{a=await (await fetch('/api/live/area')).json()}catch(e){}
+  const local=/^(localhost|127\.0\.0\.1)$/.test(location.hostname),host=local&&a.lan_ip?a.lan_ip:location.hostname;
+  LIVE.https=a.https_port||null;
+  $('lUrl').value=u||(location.protocol==='https:'?location.origin+'/sos':a.https_port?`https://${host}:${a.https_port}/sos`:`http://${host}:${location.port||80}/sos`);
+  $('lUrl').addEventListener('change',()=>{try{localStorage.setItem('quake-phone-url',$('lUrl').value)}catch(e){}lvQR()});
+})();
 </script></body></html>

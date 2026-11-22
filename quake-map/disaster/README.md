@@ -22,7 +22,8 @@ When a disaster hits, first responders need to know within minutes where the wor
 - **Casualties by severity** with a PAGER cross-check (rates are unverified, see 3.1).
 - **Top 8 priority neighbourhoods**, named from OpenStreetMap.
 - **Responder layer:** hospitals, clinics, fire and police stations and shelters (greyed out when their building is likely damaged); a road network with the chance debris blocks each street; people-weighted access to the nearest working hospital; routes with the chance they are open; a suggested dispatch order.
-- **3D view,** **Save map as image,** **Report (PDF)** and **Table (CSV)** exports, a **"How much to trust this"** panel, a **seismic-wave animation with warning times,** a **dark theme,** and an optional (off by default) **shake effect**.
+- **Live phone demo** (section 6.4.1): a small website for phones (`/sos`) that gets alerts, sends an SOS with one tap, marks people safe and walks them to the nearest safe place around likely debris; a **Dispatch** panel on the dashboard that ranks SOS calls by who is in trouble and the model's damage at that building, suggests the nearest working teams with driving times, and sends them (the phone sees the team coming).
+- **3D view** (with an **orbit** that turns it around the view), **Save map as image,** **Report (PDF)** and **Table (CSV)** exports, a **"How much to trust this"** panel, a **seismic-wave animation with warning times,** a **dark theme** (panel and street map switch separately), and an optional (off by default) **shake effect**.
 
 ---
 
@@ -43,7 +44,7 @@ When a disaster hits, first responders need to know within minutes where the wor
         |
  [4] IMPACT     expected damage class, people at risk = occupants x P(extensive or worse), casualties (earthquake)
         |
- [5] AGGREGATE  500 m cells -> heat map + priority neighbourhoods;  Monte Carlo ranges;  roads, access, routes, dispatch
+ [5] AGGREGATE  100-500 m grid -> heat map; 500 m cells -> priority neighbourhoods;  Monte Carlo ranges;  roads, access, routes, dispatch
 ```
 
 Colour classes: blue = little or none, green = light, yellow = moderate, red = severe / collapse risk.
@@ -85,6 +86,7 @@ Occupancy by use (m² per person): residential 15, office 12, retail 10, hotel 3
 | Phase 7 | Hazard plug-in interface; earthquake moved with identical numbers; flood and cyclone modules |
 | Phase 8 | Wave animation with warning times, dark theme, shake effect |
 | Follow-up | 6.1 vector tiles (static PMTiles via tippecanoe; ~50x less data per 3D view, docs/tiles.md); 1.5 ML storeys (a label-trained model passed the plan's test but was biased, so a satellite-supervised one shipped; docs/ml_attributes.md); held-out Nepal towns on EMS gradings (no transferable skill; the real survey is unobtainable) |
+| Live demo | Phone page `/sos` (alerts, one-tap SOS, I'm safe, way to safety), Dispatch panel (ranked calls, suggested teams, alerts to a circle), `tools/https_proxy.py` so phones share GPS on the local network; in-memory, no accounts (`live.py`, `sos.html`, `tests/test_live.py`) |
 | Not done | 3.5 GEM/HAZUS comparison and a real fragility calibration (need the Nepal survey and Hazus/GEM tables), true district-level held-out validation. See CHANGELOG and MASTER_PLAN.md section 13 |
 
 ---
@@ -100,11 +102,12 @@ disaster/
   soil.py  exposure.py  heights.py  population.py  priors.py    building data
   calibration.py  validation.py  uncertainty.py                 fitting, replay scores, Monte Carlo
   facilities.py  roads.py  responders.py  responder_layer.py    responder layer
+  live.py  sos.html                  live demo: phone page, alerts, SOS calls, safe-place routes
   casualty.py  confidence.py  report.py                         casualties, trust panel, PDF/CSV
   overture.py  places.py  build_exposure.py
   priors/                            small tables shipped with the code (fragility, casualty, census, occupancy, ps2ff ...)
   tiles.py  attrs_ml.py              vector tiles; storey model (priors/models/)
-  tools/                             data downloads, baselines, verification, validation, calibration, ML training
+  tools/                             data downloads, baselines, verification, validation, calibration, ML training, https_proxy.py (phones)
   tests/  docs/  index.html  CHANGELOG.md
   data/                              your data (not in git): areas/, rasters/, roads/, facilities/, validation/ ...
 ```
@@ -126,7 +129,7 @@ OpenQuake is **not** needed to run the app, only for `tools/verify_gmpe.py` and 
 ### 6.2 Run
 
 ```bash
-uvicorn app:app --reload          # http://localhost:8000
+uvicorn app:app --reload          # http://localhost:8000  (a restart loses the current run; the page says so and Run simulation brings it back)
 ```
 A fresh clone starts with no data and says so. Click **Load a new area**, drag a box, and wait for the job. Environment variables: `QUAKE_DATA_DIR` (data folder), `DEFAULT_CENTER` ("lon,lat" for the empty map), `VS30_TIF`, `VS30_OVERRIDE_TIF`.
 
@@ -150,6 +153,44 @@ Area ids are in the saved-area list (`GET /api/areas`). After adding a raster th
 1. Pick a hazard, set the scenario, **Run simulation**. Ranges appear after a few seconds for earthquakes.
 2. **Show hospitals, fire stations and roads** (first time needs internet), then **Estimate hospital access**, press **Route** next to a neighbourhood, **Suggest dispatch order**.
 3. **Report (PDF)** / **Table (CSV)** / **Save map as image**; **Play wave animation** for warning times.
+
+### 6.4.1 Live demo: phones, alerts and SOS
+
+A second page, **`/sos`**, is a small website for phones. While it is open, the phone gets alerts from the dashboard, sends an SOS with one tap,
+can mark itself safe, and shows a walking route to the nearest safe place. On the dashboard, the **Dispatch** panel on the right (toggle with the
+**Dispatch** button on the map) handles the live side: connected phones, alerts, and SOS calls. Everything is kept in server memory (a restart clears
+it); there are no accounts, push notifications or SMS. **It is a demo, not an emergency service.**
+
+1. Load an area, **Run simulation**, then **Show hospitals, fire stations and roads** (safe places and team suggestions need them).
+2. Phones share their GPS only with **https** pages, so the app is put behind a small https proxy on your local network:
+   ```bash
+   uvicorn app:app --port 8000          # terminal 1, as usual
+   python tools/https_proxy.py          # terminal 2: https://<this laptop>:8443 -> the app; prints the phone link
+   sudo ufw allow 8443/tcp              # once, Linux with ufw (macOS/Windows: allow Python through the firewall when asked)
+   ```
+   On the phone (same Wi-Fi as the laptop), open the printed link, for example `https://192.168.0.104:8443/sos`, or scan the QR code under
+   **Dispatch → Phone link**. The certificate is self-signed (made with `openssl`, kept in `data/certs/`, remade when the laptop's address
+   changes), so the first time the phone warns: **Advanced → Proceed** (Android Chrome) or **Show details → visit this website** (iPhone Safari).
+   Then allow location. The proxy needs the `openssl` command (on Windows it comes with Git for Windows). If the phone cannot reach the laptop
+   (guest or campus Wi-Fi often isolates devices), turn on the laptop's or a phone's hotspot and join it. On the laptop alone, open `/sos`
+   in a narrow window (`localhost` counts as secure). For phones on other networks, a tunnel works too (`cloudflared tunnel --url
+   http://localhost:8000`), but it puts the app on the internet with no login while it runs.
+3. The phone asks for location as soon as the page opens. A phone that is far from the loaded area (people at a demo are not in the city) is
+   moved into it automatically, once, and its movements still move the dot. Marking a position by hand is offered only when location is blocked.
+4. **SOS is one tap.** The call goes out at once with the phone's location; the phone then offers optional details (trapped, injured, number of
+   people, note) that update the call. Without a location yet, the SOS is sent the moment one is found.
+5. **Dispatch panel.** Calls are listed one per line under **Open / En route / Done**, open calls sorted by priority (trapped > injured > other,
+   more people higher, multiplied up by the model's collapse and heavy-damage chance for the building the call comes from; trapped is never below
+   *high*), then by waiting time. A new real call beeps, flashes, and opens the panel. Clicking a call (or its pin) flies the map to it and shows
+   its details with **suggested teams**: the nearest working fire station, ambulance point or hospital, and police station, with driving times on
+   the debris-aware road graph (more under *Next nearest stations*). **Send** routes that station's team to the caller; the phone shows
+   "Help is on the way" with the ETA and the team's route.
+6. **Send alert**: the circle is centred on the epicentre (or a point you pick) with the radius you set. Phones inside it get a full-screen alert
+   with sound and vibration (after the first tap on the page, a browser rule); a phone that connects inside the circle in the next 30 minutes still
+   gets it.
+7. **Way to safety** on the phone: walking route (1.3 m/s, one-way rules ignored, streets likely blocked by debris avoided) to the nearest working
+   open space or shelter for earthquakes, or shelter or school for floods and cyclones, with an **Open in Google Maps** link.
+8. **Demo** adds 20 made-up SOS calls where the model expects damage (marked *demo*) and clears them.
 
 ### 6.5 Tests
 
@@ -205,6 +246,10 @@ Not scriptable and needing a person: the official Nepal 2015 survey (registratio
 | `POST /api/responders/prepare` → `GET /api/facilities`, `POST /api/access`, `GET /api/access/{run}`, `GET /api/route?rank&source`, `POST /api/dispatch` | Responder layer |
 | `POST /api/report/{run}/image`, `GET /api/report/{run}.pdf`, `.csv` | Report export |
 | `GET /api/confidence`, `GET /api/name`, `GET /api/area/download` | Trust items; names; parquet |
+| `GET /sos`, `WS /ws/live?role=phone&device=` or `?role=dashboard` | Live demo page; live updates (phones send `{type:"loc"}` and `{type:"safe"}`) |
+| `POST /api/live/sos`, `GET /api/live/sos/{id}/options`, `POST /api/live/sos/{id}/assign` `{kind,facility_id}`, `/resolve`, `/cancel` `{device}` | SOS calls; suggested teams with driving times; send a team |
+| `POST /api/live/alert` `{lat,lon,radius_km,message,level}`, `GET /api/live/safe-route?lat&lon` | Alerts to phones in a circle; route to the nearest safe place |
+| `GET /api/live/state`, `/api/live/area`, `/api/live/demo-spot`, `POST /api/live/simulate` `{n}`, `/api/live/clear?sim_only=` | Live state and demo tools |
 
 ---
 
@@ -221,6 +266,13 @@ Not scriptable and needing a person: the official Nepal 2015 survey (registratio
 | Ranges never appear | Earthquake only; they need a few seconds. Other hazards have none |
 | Popup says "results are out of date" | A newer run replaced the one on screen; run again |
 | Blank page / map failed | Map library blocked by an ad-blocker or no network; reload |
+| Phone cannot open the link | Phone and laptop on the same Wi-Fi? Firewall: `sudo ufw allow 8443/tcp`. Guest and campus Wi-Fi often block devices from reaching each other: use the laptop's or a phone's hotspot instead |
+| Phone never asks for location / "Location needs the secure link" | The page was opened over http. Use the **https** link from `tools/https_proxy.py` and accept the certificate warning |
+| "Location is blocked" on the phone | Permission was refused once: site settings (icon left of the address) → Location → Allow, then **Try again** |
+| Phone shows an old version of the page | Close the tab and open the link again (the pages are sent with `no-store`, so this is needed once at most) |
+| No alarm sound on the phone | Browsers play sound only after one tap on the page; also check the ring/silent switch |
+| SOS calls vanished | The server was restarted (`--reload` restarts on every saved file); live state is in memory. Open phones re-send their SOS |
+| Dispatch shows "Load streets and facilities" | Press **Show hospitals, fire stations and roads** (Responders tab) for the area first |
 
 ---
 

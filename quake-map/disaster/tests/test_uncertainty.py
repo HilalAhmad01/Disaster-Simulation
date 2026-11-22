@@ -79,3 +79,16 @@ def test_casualty_ranges_are_reported_and_zero_sigma_matches_deterministic(model
     assert r["deaths"]["p50"] == pytest.approx(det["deaths"], abs=1.5) and r["deaths"]["p10"] == pytest.approx(r["deaths"]["p90"], rel=1e-9)
     full = U.run_mc(model, n=40, seed=2)["totals"]
     assert full["deaths"]["p10"] < full["deaths"]["p90"] and full["injuries"]["p90"] > full["deaths"]["p90"]
+
+@pytest.mark.parametrize("draw_types", [True, False])
+def test_thread_count_does_not_change_the_numbers(model, monkeypatch, draw_types):
+    """Realisations run on several threads; draws stay in the single-thread order, so the result is bit-identical."""
+    model.run(28.575, 77.33, 12, 6.8)
+    monkeypatch.setattr(U, "MC_THREADS", 1)
+    a = U.run_mc(model, n=23, seed=3, draw_types=draw_types)
+    monkeypatch.setattr(U, "MC_THREADS", 4)
+    b = U.run_mc(model, n=23, seed=3, draw_types=draw_types)
+    assert a["totals"] == b["totals"]
+    for k in ("p_extensive_mean", "p_collapse_mean", "p_extensive_p90"):
+        assert np.array_equal(a[k], b[k])
+    assert all(np.array_equal(a["cell_risk"][k], b["cell_risk"][k]) for k in a["cell_risk"])

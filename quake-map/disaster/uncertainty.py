@@ -11,6 +11,9 @@ Sources of uncertainty, sampled once per realisation:
 Damage is kept as probabilities (expected counts per realisation), so the spread reflects the uncertain inputs, not
 binomial sampling noise. Seeded: the same seed gives the same numbers.
 """
+import os
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 import numpy as np, pandas as pd
 from scipy.linalg import cholesky
 from scipy.special import ndtr
@@ -19,6 +22,7 @@ import simulate as S, casualty as K
 B_KM = 8.5            # correlation range (km) for PGA; Jayaram & Baker 2009 give ~8.5 km for clustered Vs30 (~40.7 km if not)
 FRAG_LN_SD = 0.25     # ASSUMPTION used when no fragility bootstrap samples exist: ln-sd of each median (one common draw per class)
 OCC_LN_SD = 0.20      # ASSUMPTION: ln-sd of the people multiplier (GHS-POP vs reality)
+MC_THREADS = 2        # realisations computed at once (numpy arithmetic runs outside the GIL); results do not depend on it
 MAX_NODES = 6000      # above this the correlation grid coarsens (Cholesky cost grows as nodes^3)
 PCT = (10, 50, 90)
 
@@ -51,7 +55,11 @@ class CorrelatedField:
 
     def sample(self, rng, n=1):
         """n independent fields at the points, shape (n, N)."""
-        z = self.L @ rng.standard_normal((self.L.shape[0], n))
+        return self.from_normals(rng.standard_normal((self.L.shape[0], n)))
+
+    def from_normals(self, white):
+        """The fields for given independent N(0,1) grid draws (nodes, n): lets the draws and the arithmetic happen apart."""
+        z = self.L @ white
         out = sum(self.w[k][None, :] * z[self.idx[k], :].T for k in range(4)) * self.norm[None, :]
         return out
 
@@ -87,17 +95,28 @@ def run_mc(model, n=200, seed=0, b_km=B_KM, draw_types=True, scales=None, progre
     pe_sum, pc_sum = np.zeros(N), np.zeros(N)
     pe_store = np.zeros((n, N), np.float16)
     fsrc = {}
-    for r in range(n):
+
+    def draw():
+        """Every random number of one realisation, in the order the original single-threaded loop drew them, so the result is
+        the same whatever the number of threads."""
         eta = sc["tau"] * rng.standard_normal() * sn["tau"]
-        eps = sc["phi"] * sn["phi"] * field.sample(rng, 1)[0] if field is not None else 0.0
-        pga = np.exp(sn["mu"] + eta + eps)
-        frag, beta, fsrc = _fragility_draws(rng, sn["frag"], sn["beta"], sn["samples"]) if sc["frag"] else (sn["frag"], sn["beta"], {})
+        white = rng.standard_normal((field.L.shape[0], 1)) if field is not None else None
+        frag, beta, fs = _fragility_draws(rng, sn["frag"], sn["beta"], sn["samples"]) if sc["frag"] else (sn["frag"], sn["beta"], {})
         if sc["frag"] and sc["frag"] != 1.0:
             frag = {t: tuple(np.asarray(sn["frag"][t]) * (np.asarray(frag[t]) / np.asarray(sn["frag"][t])) ** sc["frag"]) for t in frag}
+        u = rng.random(N) if draw_types else None
+        m = np.exp(sc["occ"] * OCC_LN_SD * rng.standard_normal() - 0.5 * (sc["occ"] * OCC_LN_SD) ** 2)    # mean-one multiplier
+        return eta, white, frag, beta, fs, u, m
+
+    def realise(r, eta, white, frag, beta, u, m):
+        """The arithmetic of realisation r (numpy releases the GIL here, so several run at once). Writes row r of the per-run
+        outputs and returns the two arrays that are summed over runs (summed by the caller in run order)."""
+        eps = sc["phi"] * sn["phi"] * field.from_normals(white)[0] if white is not None else 0.0
+        pga = np.exp(sn["mu"] + eta + eps)
+        typ = None
         if draw_types:
             # one type per building: gather its curve and evaluate all buildings in one pass (same values as damage_probs on a
             # one-hot W, without per-type masking, which was most of the run time on large areas)
-            u = rng.random(N)
             typ = (u[:, None] > cum).sum(1).clip(0, len(S.TYPES) - 1)
             lth = np.log(np.array([frag[t] for t in S.TYPES], float))
             bt = np.array([beta[t] for t in S.TYPES], float)
@@ -105,15 +124,31 @@ def run_mc(model, n=200, seed=0, b_km=B_KM, draw_types=True, scales=None, progre
         else:
             E = S.exceedance(pga, W, frag, beta)                       # fragility curves once, for damage and casualties
             p = S.mix_exceedance(E, W, N)
-        m = np.exp(sc["occ"] * OCC_LN_SD * rng.standard_normal() - 0.5 * (sc["occ"] * OCC_LN_SD) ** 2)    # mean-one multiplier
         risk = occ * m * p[:, 2]
         tot["people_at_risk"][r], tot["expected_collapses"][r], tot["moderate_or_worse"][r] = risk.sum(), p[:, 3].sum(), p[:, 1].sum()
         ct = K.totals_one_type(p, typ, occ * m, S.TYPES, rates, cparams) if draw_types else K.casualties_from(E, W, occ * m, S.TYPES, rates, cparams)[0]
         tot["deaths"][r], tot["injuries"][r] = ct[3], ct[:3].sum()
         cell_risk[r] = np.bincount(cell, weights=risk, minlength=ncell)
-        pe_sum += p[:, 2]; pc_sum += p[:, 3]; pe_store[r] = p[:, 2]
-        if progress and (r % 5 == 4 or r == n - 1):
-            progress((r + 1) / n)
+        pe_store[r] = p[:, 2]
+        return p[:, 2].copy(), p[:, 3].copy()
+
+    workers = max(1, min(MC_THREADS, os.cpu_count() or 1, n))
+    pending, done = deque(), 0
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="mc") as pool:
+        try:
+            for r in range(n):
+                eta, white, frag, beta, fsrc, u, m = draw()
+                pending.append(pool.submit(realise, r, eta, white, frag, beta, u, m))
+                while pending and (len(pending) > 2 * workers or r == n - 1):     # a short window keeps memory flat
+                    p2, p3 = pending.popleft().result()
+                    np.add(pe_sum, p2, out=pe_sum); np.add(pc_sum, p3, out=pc_sum)
+                    done += 1
+                    if progress and (done % 5 == 0 or done == n):
+                        progress(done / n)                                   # raises if the job was cancelled
+        except BaseException:
+            for f in pending:
+                f.cancel()
+            raise
     pct = lambda a: {f"p{q}": float(np.percentile(a, q)) for q in PCT}
     cr = np.percentile(cell_risk, [10, 50, 90], axis=0)
     return {"n": n, "seed": seed, "b_km": b_km, "draw_types": draw_types,

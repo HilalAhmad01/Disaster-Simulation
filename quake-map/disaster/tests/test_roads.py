@@ -75,3 +75,15 @@ def test_street_narrower_than_the_free_width_is_blocked_by_any_encroaching_debri
 def test_widths_prefer_osm_tag_then_lanes_then_class_default():
     w = R.widths_for(["primary", "residential", "residential", ["service", "x"]], osm_width=["12 m", None, None, None], lanes=[None, 2, None, None])
     assert list(w) == [12.0, 7.0, 5.5, 4.0]
+
+
+def test_road_tiles_cover_the_box_and_stay_small():
+    import numpy as np
+    box = (77.30, 28.55, 77.36, 28.60)                       # 6 x 5.5 km: one request
+    assert R.road_tiles(box) == [box]
+    big = (76.97, 28.42, 77.38, 28.78)                       # Delhi core with padding, about 40 x 40 km
+    tiles = R.road_tiles(big)
+    assert len(tiles) == 16 and min(t[0] for t in tiles) == big[0] and max(t[2] for t in tiles) == big[2] and min(t[1] for t in tiles) == big[1] and max(t[3] for t in tiles) == big[3]
+    assert all((t[2] - t[0]) * 111 * np.cos(np.radians(28.6)) <= R.TILE_KM + 1e-6 and (t[3] - t[1]) * 111 <= R.TILE_KM + 1e-6 for t in tiles)
+    area = sum((t[2] - t[0]) * (t[3] - t[1]) for t in tiles)
+    assert abs(area - (big[2] - big[0]) * (big[3] - big[1])) < 1e-9         # no gaps, no overlap

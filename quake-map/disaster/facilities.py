@@ -6,12 +6,13 @@ DEDUPE_M metres with similar or missing names) are merged. Each facility is link
 flagged 'may not be working'. Open spaces (parks, grounds) are not buildings and keep functionality 1; Overpass gives only their centre, so their size is unknown (a limitation).
 """
 import difflib, json, pathlib, time
+from concurrent.futures import ThreadPoolExecutor
 import numpy as np, pandas as pd, geopandas as gpd, shapely
 
 KINDS = ("hospital", "clinic", "ambulance", "fire_station", "police", "shelter", "open_space", "school")
 WORKING_KINDS = ("hospital", "fire_station", "police", "ambulance")      # kinds a response can start from
 DEDUPE_M, LINK_M, NAME_SIM = 50.0, 30.0, 0.6
-OVERPASS = ("https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter")
+OVERPASS = ("https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://overpass.kumi.systems/api/interpreter")   # public mirrors, tried in turn
 UA = "quake-damage-map/1.0 (local research project)"
 
 def _kind(tags):
@@ -71,7 +72,20 @@ def fetch_overture(bbox, release=None, min_confidence=0.5):
     if prep is None:
         return pd.DataFrame(columns=["kind", "name", "lon", "lat", "source", "beds", "src_id"])
     ds, flt = prep
-    df = ds.to_table(columns=["id", "geometry", "names", "taxonomy", "confidence"], filter=flt).to_pandas()
+    cols = ["id", "geometry", "names", "taxonomy", "confidence"]
+    parts = []
+    if hasattr(ds, "get_fragments"):                         # split into row groups and read them at once, like the building download
+        for frag in ds.get_fragments(filter=flt):
+            try:
+                parts.extend(frag.split_by_row_group(flt))
+            except Exception:
+                parts.append(frag)
+    if len(parts) > 1:
+        import pyarrow as pa
+        with ThreadPoolExecutor(max_workers=min(8, len(parts))) as pool:
+            df = pa.concat_tables(list(pool.map(lambda q: q.to_table(columns=cols, filter=flt), parts))).to_pandas()
+    else:
+        df = ds.to_table(columns=cols, filter=flt).to_pandas()
     kind = df.taxonomy.apply(lambda d: OVT.get(d.get("primary")) if isinstance(d, dict) else None)
     df = df[kind.notna() & (df.confidence.fillna(0) >= min_confidence)].copy()
     kind = kind[df.index]
@@ -127,14 +141,18 @@ def build(bbox, buildings, osm_fn=fetch_osm, ovt_fn=fetch_overture, release=None
     """Facility table for a box: columns id, kind, name, lon, lat, source, beds, building_id. Network failures in one source
     do not discard the other: the 'notes' attribute records what was missing."""
     notes, osm, ovt = [], None, None
-    try:
-        osm = osm_fn(bbox)
-    except Exception as ex:
-        notes.append(f"OpenStreetMap unavailable: {str(ex)[:100]}")
-    try:
-        ovt = ovt_fn(bbox, release) if release else ovt_fn(bbox)
-    except Exception as ex:
-        notes.append(f"Overture places unavailable: {str(ex)[:100]}")
+    # the two sources are independent requests to different servers (about 30 s each on a big city): ask both at once
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        fo = pool.submit(osm_fn, bbox)
+        fv = pool.submit(ovt_fn, bbox, release) if release else pool.submit(ovt_fn, bbox)
+        try:
+            osm = fo.result()
+        except Exception as ex:
+            notes.append(f"OpenStreetMap unavailable: {str(ex)[:100]}")
+        try:
+            ovt = fv.result()
+        except Exception as ex:
+            notes.append(f"Overture places unavailable: {str(ex)[:100]}")
     empty = pd.DataFrame(columns=["kind", "name", "lon", "lat", "source", "beds", "src_id"])
     f = merge(osm if osm is not None else empty, ovt if ovt is not None else empty)
     f = f[f.lon.between(bbox[0], bbox[2]) & f.lat.between(bbox[1], bbox[3])].reset_index(drop=True)

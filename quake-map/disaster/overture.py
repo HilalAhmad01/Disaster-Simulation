@@ -3,9 +3,13 @@
 Only the columns in KEEP are read (about 28% fewer bytes than all of them). The `bbox` struct is kept (flattened to
 xmin/xmax/ymin/ymax) so a cached area can later be clipped to a smaller box with exactly Overture's own rule.
 """
+import os
+from concurrent.futures import ThreadPoolExecutor
 import geopandas as gpd
 import numpy as np
 import shapely
+
+DL_THREADS = int(os.environ.get("OVERTURE_THREADS", "8"))   # Parquet row groups fetched at once (each is a separate request to Overture's storage)
 
 KEEP = ("geometry", "bbox", "class", "subtype", "height", "num_floors")
 BBOX_COLS = ("xmin", "xmax", "ymin", "ymax")
@@ -48,13 +52,22 @@ def _read_columns(core, bbox, release=None, progress=None):
             parts.extend(frag.split_by_row_group(flt))     # row groups whose statistics cannot match are dropped here
         except Exception:
             parts.append(frag)
-    tables = []
-    for i, part in enumerate(parts):
-        tables.append(part.to_table(columns=cols, filter=flt))
-        if progress:
-            progress(i + 1, len(parts))
-    if not tables:
+    if not parts:
         return None
+    # The row groups are independent requests, mostly waiting on the network: fetching 8 at once took 6.5 s instead of 11.3 s for the same
+    # 6 parts. Results are collected in order, so the table is the same as before.
+    tables = []
+    with ThreadPoolExecutor(max_workers=max(1, min(DL_THREADS, len(parts)))) as pool:
+        futs = [pool.submit(part.to_table, columns=cols, filter=flt) for part in parts]
+        try:
+            for i, f in enumerate(futs):
+                tables.append(f.result())
+                if progress:
+                    progress(i + 1, len(parts))
+        except BaseException:
+            for f in futs:
+                f.cancel()
+            raise
     return pa.concat_tables(tables)
 
 def _flatten_bbox(df):

@@ -8,7 +8,7 @@ from overture import fetch_buildings, latest_release
 from places import reverse_name
 from areas import Registry
 from jobs import Jobs
-import exposure, responder_layer, report, confidence, hazards, re, tiles
+import exposure, responder_layer, report, confidence, hazards, re, tiles, live
 import base64
 
 here = pathlib.Path(__file__).resolve().parent
@@ -44,6 +44,7 @@ class FloodIn(BaseModel):
     time_of_day: str = Field("night", pattern="^(night|day|commute)$")
 
 class Teams(BaseModel):
+    run: int | None = None                       # the simulation the page is showing; a mismatch means the page is stale
     fire_station: int = Field(0, ge=0, le=50)
     police: int = Field(0, ge=0, le=50)
     ambulance: int = Field(0, ge=0, le=50)       # drawn from ambulance stations and hospitals
@@ -60,7 +61,7 @@ class State:
     def __init__(self, data_dir):
         self.data = pathlib.Path(data_dir)
         self.data.mkdir(parents=True, exist_ok=True)
-        self.registry, self.jobs = Registry(self.data), Jobs(workers=2)
+        self.registry, self.jobs = Registry(self.data), Jobs(workers=2, lanes={"uncertainty": 1, "tiles": 1})
         self.model, self.active_id, self.legacy_file = None, None, None
         self.lock = threading.Lock()
         self.mc, self.mc_jobs = {}, {}              # run number -> uncertainty report / job id
@@ -216,7 +217,7 @@ def create_app(data_dir=None):
 
     @app.get("/")
     def home():
-        return FileResponse(index)
+        return FileResponse(index, headers={"Cache-Control": "no-store"})
 
     @app.get("/api/meta")
     def meta():
@@ -298,10 +299,23 @@ def create_app(data_dir=None):
         return _summary(m, aid)
 
     # ---- responder layer (Phase 5) ----
-    def need_layer():
+    layer_lock = threading.Lock()
+
+    def need_layer(run=None):
+        """The responder layer for the active area. After a server restart (uvicorn --reload restarts on every saved .py file) or an
+        area switch it is rebuilt from the cached facilities and roads (about 3 s, no network); only an area that was never prepared
+        answers 409. `run`: the simulation the page believes is on the map; a different one means the page is out of date."""
         m = st.need()
         if st.layer is None or st.layer.model is not m:
-            raise HTTPException(409, "Prepare the responder layer first (hospitals and roads).")
+            aid = st.active_id
+            with layer_lock:
+                if (st.layer is None or st.layer.model is not m) and aid and responder_layer.cache_ready(st.data, aid):
+                    st.layer = responder_layer.build_for_area(st.data, aid, m, tuple(float(x) for x in m.bounds))
+            if st.layer is None or st.layer.model is not m:
+                raise HTTPException(409, "Prepare the responder layer first (hospitals and roads).")
+        if run and run != st.layer.model.run_id:
+            raise HTTPException(409, "These results are out of date. Run the simulation again." if st.layer.model.last is not None
+                                else responder_layer.NEEDS_RUN)
         return st.layer
 
     @app.post("/api/responders/prepare")
@@ -325,15 +339,15 @@ def create_app(data_dir=None):
         return need_layer().facilities_geojson()
 
     @app.post("/api/access")
-    def access():
+    def access(run: int | None = None):
         """Blockage and hospital access for the simulation on the map (background job)."""
-        layer = need_layer()
+        layer = need_layer(run)
         if layer.model.last is None:
             raise HTTPException(409, "Run a simulation first.")
         run = layer.model.run_id
         def work(job):
             job.update(0.1, "Estimating which streets debris may block…")
-            res = layer.compute_access()
+            res = layer.ensure_access()
             if layer.model.run_id != run:
                 raise ValueError("The simulation changed while this was running. Run access again.")
             return {"run": run, "summary": res["summary"]}
@@ -348,23 +362,27 @@ def create_app(data_dir=None):
         return {"run": run, "summary": a["summary"], "cells": a["cells"]}
 
     @app.get("/api/route")
-    def route(rank: int, source: str = "nearest:fire_station"):
-        layer = need_layer()
+    def route(rank: int, source: str = "nearest:fire_station", run: int | None = None):
+        layer = need_layer(run)
         try:
             return layer.route(source if source.startswith("nearest:") else int(source), rank)
+        except responder_layer.NeedsRun as ex:
+            raise HTTPException(409, str(ex))
         except (ValueError, KeyError) as ex:
-            raise HTTPException(409 if "first" in str(ex) else 404, str(ex).strip("'\""))
+            raise HTTPException(404, str(ex).strip("'\""))
 
     @app.post("/api/dispatch")
     def dispatch(t: Teams):
-        layer = need_layer()
+        layer = need_layer(t.run)
         try:
-            res = layer.dispatch({k: v for k, v in t.model_dump().items() if v})
+            res = layer.dispatch({k: v for k, v in t.model_dump().items() if k != "run" and v})
             st.last_dispatch[layer.model.run_id] = res
             _trim(st.last_dispatch, 5)
             return {"assignments": res}
-        except ValueError as ex:
+        except responder_layer.NeedsRun as ex:
             raise HTTPException(409, str(ex))
+        except ValueError as ex:
+            raise HTTPException(422, str(ex))
 
     # ---- static vector tiles (Phase 6.1) ----
     @app.get("/api/tiles/status")
@@ -506,6 +524,14 @@ def create_app(data_dir=None):
         if f is None or not f.exists():
             raise HTTPException(404, "No area has been loaded yet.")
         return FileResponse(f, filename=f"{st.active_id or f.stem}.parquet", media_type="application/octet-stream")
+
+    # ---- live demo: phones, alerts, SOS (live.py) ----
+    def layer_or_none():
+        try:
+            return need_layer()
+        except HTTPException:
+            return None
+    live.attach(app, st, layer_or_none)
 
     return app
 

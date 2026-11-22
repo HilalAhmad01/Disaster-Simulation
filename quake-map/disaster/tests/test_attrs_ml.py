@@ -89,7 +89,7 @@ def test_without_model_or_heights_nothing_changes(tmp_path, tiny_model):
     b, area, ht, geoms, utm = _inputs()
     base = exposure.attributes_full(b, area, ht)
     no_model = exposure.attributes_full(b, area, ht, geoms=geoms, utm=utm, data_dir=tmp_path / "empty")      # falls back to priors/models (shipped)
-    assert set(no_model["levels_src"]) <= {"label", "google", "guess", "guess_unstable", "satellite_model"}
+    assert set(no_model["levels_src"]) <= {"label", "google", "google_over_label", "guess", "guess_unstable", "satellite_model"}
     A._MODEL.clear()
     no_heights = exposure.attributes_full(b, area, None, geoms=geoms, utm=utm, data_dir=tiny_model)
     ref = exposure.attributes_full(b, area, None)

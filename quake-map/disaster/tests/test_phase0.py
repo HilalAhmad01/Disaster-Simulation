@@ -213,3 +213,16 @@ def test_jobs_progress_and_errors():
         if jobs.get(e.id).state == "error": break
         time.sleep(0.01)
     assert jobs.get(e.id).public()["error"] == "nope"
+
+def test_background_lane_does_not_block_interactive_jobs():
+    """Monte Carlo ranges and tile cutting run in their own lanes, so e.g. the responder layer never queues behind them."""
+    from jobs import Jobs
+    import threading
+    jobs, gate = Jobs(workers=1, lanes={"uncertainty": 1}), threading.Event()
+    slow = jobs.submit("uncertainty", lambda job: gate.wait(5))
+    quick = jobs.submit("responders", lambda job: {"ok": True})
+    for _ in range(200):
+        if jobs.get(quick.id).state == "done": break
+        time.sleep(0.01)
+    assert jobs.get(quick.id).state == "done" and jobs.get(slow.id).state == "running"
+    gate.set()

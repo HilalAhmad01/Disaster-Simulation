@@ -10,3 +10,5 @@ venv/
 .venv-verify/
 *.pyc
 .tools/
+# road and facility download cache (osmnx/Overpass); re-downloaded when needed
+quake-map/disaster/cache/
