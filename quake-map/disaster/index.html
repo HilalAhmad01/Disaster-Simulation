@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Quake damage map</title>
+<title>Disaster Simulation</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='3' y='3' width='10' height='10' transform='rotate(45 8 8)' fill='%23d7263d'/%3E%3C/svg%3E">
 <script>(function(){let t='light';try{t=localStorage.getItem('quake-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch(e){}document.documentElement.dataset.theme=t})()</script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
@@ -165,7 +165,20 @@ textarea:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 @media(max-width:700px){.maplegend{left:8px;bottom:8px;padding:6px 8px;width:200px;max-height:45%}}
 @media(max-width:700px){#app{flex-direction:column-reverse}aside{width:100%;height:45%;border-right:0;border-top:1px solid var(--line)}#map{min-height:0}#resizer{display:none}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
-</style></head><body><div id="app">
+</style><link rel="stylesheet" href="/ui/command.css"></head><body>
+<header id="top">
+<button id="tbPanel" class="alt sq" type="button" aria-pressed="true" aria-label="Show or hide the side panel" title="Side panel"><i data-i="panel"></i></button>
+<span class="brand">Disaster Simulation</span><span class="ctx" id="tbCtx"></span>
+<div id="tbStats" aria-live="polite"><div class="tstat" id="tsRisk" hidden><b>0</b><span>at risk</span></div><div class="tstat" id="tsCol" hidden><b>0</b><span>collapses</span></div><div class="tstat" id="tsDead" hidden><b>0</b><span>est. deaths</span></div><div class="tstat" id="tsAcc" hidden><b>0</b><span>to a hospital</span></div></div>
+<div id="tbAct">
+<button id="tbTour" class="alt" type="button" aria-haspopup="dialog" title="Walk through the whole story"><i data-i="play"></i><span class="lbl">Guided tour</span></button>
+<button id="tbAsk" class="alt" type="button" title="Ask about the results"><i data-i="chat"></i><span class="lbl">Ask</span></button>
+<button id="tbReport" class="alt" type="button" title="Write a situation report"><i data-i="file"></i><span class="lbl">Report</span></button>
+<button id="tbView" class="alt sq" type="button" aria-haspopup="dialog" aria-label="View settings" title="View settings"><i data-i="sliders"></i></button>
+<button id="tbDisp" class="alt" type="button" aria-pressed="true" title="Show or hide dispatch"><i data-i="list"></i><span class="lbl">Dispatch</span><span class="badge" id="tbBadge"></span></button>
+</div>
+</header>
+<div id="app">
 <aside id="side">
 <h1 id="title">Earthquake damage estimate</h1>
 <details class="sec" id="areaSec" open><summary>Area<span class="sum" id="areaSum"></span></summary><div class="secb">
@@ -240,6 +253,7 @@ textarea:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
 </div>
 <p class="hint foot">Estimates for planning, not confirmed damage. Zoom in past street level to see individual buildings.</p>
 </aside><div id="resizer" role="separator" aria-orientation="vertical" aria-label="Resize the panel" tabindex="0" title="Drag to resize, double-click to reset"></div><div id="map">
+<div class="mtool" role="toolbar" aria-label="Map view"><button id="mt3d" type="button" aria-pressed="false" aria-label="3D view" title="3D view" disabled><i data-i="cube"></i></button><button id="mtSwipe" type="button" aria-pressed="false" aria-label="Before and after" title="Before and after" disabled><i data-i="split"></i></button><button id="mtTour" type="button" aria-pressed="false" aria-label="Fly through the worst areas" title="Fly through the worst areas" disabled><i data-i="route"></i></button></div>
 <div class="mapctl l"><button id="panel" type="button" class="alt" title="Hide or show the side panel" aria-pressed="true">Hide panel</button></div>
 <div class="mapctl"><button id="dispBtn" type="button" class="alt" aria-pressed="false" aria-controls="dispatch" title="Show or hide the dispatch panel">Dispatch<span class="badge" id="dispBadge"></span></button><button id="basemap" type="button" class="alt" title="Light or dark street map">Dark map</button><button id="theme" type="button" class="alt" title="Light or dark panel">Dark panel</button></div>
 <details class="maplegend" id="legend" open hidden><summary>Legend</summary>
@@ -1215,6 +1229,7 @@ function lvConnect(){
   ws.onopen=()=>{LIVE.up=true;$('lConn').className='lconn on';$('lConn').title='Connected'};
   ws.onclose=()=>{LIVE.up=false;$('lConn').className='lconn off';$('lConn').title='Reconnecting';$('dSub').textContent='Reconnecting…';setTimeout(lvConnect,2000)};
   ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(_){return}
+    if(m.now)LIVE.off=m.now-Date.now()/1000;if(m.speed)LIVE.speed=m.speed;       // the server's clock and the demo speed, for teams driving on the map
     if(m.type==='snapshot'){LIVE.sos=new Map(m.sos.map(s=>[s.id,s]));LIVE.phones=new Map(m.phones.map(p=>[p.device,p]));LIVE.alerts=m.alerts||[];m.sos.forEach(s=>LIVE.seen.add(s.id));
       if(LIVE.sel!=null&&!LIVE.sos.has(LIVE.sel))LIVE.sel=null;lvHist()}
     else if(m.type==='sos'){const s=m.sos,old=LIVE.sos.get(s.id),fresh=!LIVE.seen.has(s.id);LIVE.seen.add(s.id);LIVE.sos.set(s.id,s);
@@ -1281,4 +1296,5 @@ async function lvQR(){
   $('lUrl').value=u||(location.protocol==='https:'?location.origin+'/sos':a.https_port?`https://${host}:${a.https_port}/sos`:`http://${host}:${location.port||80}/sos`);
   $('lUrl').addEventListener('change',()=>{try{localStorage.setItem('quake-phone-url',$('lUrl').value)}catch(e){}lvQR()});
 })();
-</script></body></html>
+</script>
+<script src="/ui/command.js"></script></body></html>

@@ -26,6 +26,12 @@ It is built on open data (Overture/OpenStreetMap building footprints, Google Ope
 | **Responders** | Hospitals, fire and police stations, shelters (greyed out when their building is likely damaged); the chance debris blocks each street; travel time to the nearest working hospital; routes and a suggested dispatch order. |
 | **Phone SOS and alerts** | A small website for phones (`/sos`): full-screen alerts with sound, one-tap SOS with the phone's GPS, "I'm safe", and a walking route to the nearest safe place that avoids streets debris may block (plus a Google Maps link). |
 | **Dispatch** | A panel next to the map with live SOS calls ranked by priority (trapped, injured, people, and the model's collapse chance for that building), suggested teams with driving times, one-click dispatch, alerts to all phones in a circle, and made-up calls for demos. |
+| **Command centre** | A topbar with the headline numbers, one map toolbar (3D, before/after, fly-through), live phone and SOS counts in the Dispatch panel, teams that drive along their routes, sound, and a **Guided tour** that walks through the whole story. |
+| **AI situation report and assistant** | One button writes a situation report from the results; a chat (typed or spoken) answers *Which hospital is most at risk?* and *Where do I send the first team?* and flies the map there. Uses Claude when `ANTHROPIC_API_KEY` is set, a built-in writer otherwise. |
+| **Real earthquake replays** | One click: Gorkha 2015, Türkiye 2023 or Bhuj 2001 on your city, Gorkha at its real epicentre, a Himalayan M8 scenario. |
+| **Aftershock and knock-on failures** | A second quake on already damaged buildings; fires that spread, gas leaks, power cuts and bridge closures; hatching where the estimate is least certain. All knock-on rates are assumptions. |
+| **Compare scenarios** | Two earthquakes side by side (M6.5 against M7.5, night against day) with a table of the differences. |
+| **Optimise all teams** | One plan for every open call instead of one at a time, with the saving shown against the nearest-first baseline; fleet, fuel and hospital-bed tracker. |
 | **Exports** | PDF report, CSV table and map image. |
 | **Extras** | 3D view, seismic-wave animation with warning times, dark theme, a "How much to trust this" panel. |
 
@@ -68,6 +74,7 @@ A fresh clone starts with no data, and the page tells you so:
 
 | Environment variable | Purpose |
 |---|---|
+| `ANTHROPIC_API_KEY`, `BRIEF_MODEL` | Optional: let Claude write the situation report and answer questions (default model `claude-opus-5-5`) |
 | `QUAKE_DATA_DIR` | Where areas and rasters are stored (default `quake-map/disaster/data/`) |
 | `DEFAULT_CENTER` | `"lon,lat"` for the empty map (default Noida) |
 | `VS30_TIF`, `VS30_OVERRIDE_TIF` | Use a different soil raster, or a local microzonation map |
@@ -109,14 +116,22 @@ If the phone cannot open the link: check it is on the same Wi-Fi, check the fire
 ### Tests
 
 ```bash
-pytest -q                            # about 170 tests, no network needed
+pytest -q                            # about 200 tests, no network needed
 ```
 
 ---
 
 ## What's new
 
-### Latest update: phone SOS, alerts and a dispatch panel
+### Latest update: command centre and a quieter interface
+
+- **Guided tour** (topbar): a pre-flight checklist and a nine-step walk-through: replay a real earthquake, watch the damage land, fly through the city in 3D, check responder access, bring phones into the mesh, optimise all teams, run knock-on failures and an aftershock, compare scenarios, read the AI report.
+- **Optimise all teams**: assigns every free unit to every open call at once and shows the saving against answering calls one by one. Teams drive on a demo clock (x1 to x60) on the map and on the phone.
+- **AI report and assistant**: set `ANTHROPIC_API_KEY` (and `pip install anthropic`) to have Claude write them; `BRIEF_MODEL` changes the model. Without a key the built-in writer produces the same kind of text from the same numbers, so the demo works offline.
+- **Phone page**: SOS countdown ring (3 s, cancel or send now), haptics, and the team driving towards you with a live countdown.
+- New code is in `ui/` (front end), `insights.py`, `cascade.py`, `presets.py` and `hazards/aftershock.py`; details and assumptions in [CHANGELOG.md](quake-map/disaster/CHANGELOG.md).
+
+### Previous update: phone SOS, alerts and a dispatch panel
 
 - **Phone page (`/sos`)**: asks for location on opening, one-tap SOS (details optional afterwards), full-screen alerts with sound and vibration, "I'm safe", and a walking route to the nearest working open space or shelter around streets likely blocked by debris, with a Google Maps link. An open SOS follows the phone as it moves and survives a server restart.
 - **Dispatch panel** on the right of the map: calls under Open / En route / Done, ranked by priority; each call shows the building's modelled collapse chance and the nearest working fire, ambulance and police teams with driving times; **Send** routes the team and the phone sees it coming with an ETA.
@@ -190,7 +205,10 @@ quake-map/disaster/
   uncertainty.py           Monte Carlo ranges
   responder_layer.py …     facilities, roads, access, routes, dispatch
   report.py                PDF and CSV export
-  live.py, sos.html        live demo: phone page, alerts, SOS calls, dispatch
+  live.py, sos.html        live demo: phone page, alerts, SOS calls, dispatch, team optimiser, fleet
+  ui/                      command-centre front end (command.css, command.js)
+  insights.py, cascade.py  situation report and assistant; fires, gas, power and bridges
+  presets.py               real-earthquake replays
   priors/                  shipped tables (fragility, casualty rates, census, occupancy)
   tools/                   data downloads, calibration, validation, baselines, https_proxy.py (phones)
   tests/                   test suite

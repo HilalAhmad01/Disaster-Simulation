@@ -66,6 +66,20 @@ textarea{width:100%;margin-top:8px;min-height:64px;padding:10px 12px;border:1px 
 .me.demo{background:#7c3aed;box-shadow:0 0 0 6px rgba(124,58,237,.25),0 1px 4px rgba(0,0,0,.4)}
 .dest{width:22px;height:22px;border-radius:6px;background:var(--grn);border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4);transform:rotate(45deg)}
 .maplibregl-ctrl-attrib{font-size:10px}
+/* a sheet over the map, a flat SOS button, a countdown ring before sending. Nothing loops or glows. */
+main{position:relative;border-radius:20px 20px 0 0;margin-top:-20px;border-top:1px solid var(--line);padding-top:20px}
+main::before{content:"";position:absolute;left:50%;top:8px;width:40px;height:4px;margin-left:-20px;border-radius:2px;background:var(--line-2)}
+#sosBtn{width:192px;height:192px;margin:4px auto 12px;font-size:44px;line-height:48px;letter-spacing:0;box-shadow:none;border:6px solid color-mix(in srgb,var(--red) 28%,transparent)}
+#sosBtn:active{transform:scale(.97)}
+#cd{position:fixed;inset:0;z-index:40;background:#111;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center}
+#cd .cdwrap{position:relative;width:200px;height:200px;margin-bottom:24px}
+#cd svg{width:100%;height:100%;transform:rotate(-90deg)}#cd circle{fill:none;stroke-width:6}
+#cd .bg{stroke:rgba(255,255,255,.14)}#cd .fg{stroke:var(--red);stroke-linecap:round}
+#cd b{position:absolute;inset:0;display:grid;place-items:center;font:500 80px/1 var(--mono)}
+#cd h2{margin:0 0 4px;font:500 22px/28px var(--sans)}#cd p{margin:0 0 24px;color:rgba(255,255,255,.7)}
+#cd button{max-width:340px;background:#ededed;color:#171717;border:0;min-height:52px;font-size:16px}#cd button.ghost{background:transparent;color:#ededed;border:1px solid rgba(255,255,255,.4)}
+.team{width:22px;height:22px;border-radius:50%;background:#ededed;border:3px solid #111}
+.eta{font:500 28px/34px var(--mono);margin-top:4px}
 </style></head><body>
 <header><h1 id="title">Emergency help</h1><span class="conn" id="conn"><i></i><span>Connecting</span></span></header>
 <div id="map"><div id="mapHint" hidden>Tap the map where you are</div><div id="soundTip">Tap anywhere to turn on alarm sound</div></div>
@@ -74,8 +88,8 @@ textarea{width:100%;margin-top:8px;min-height:64px;padding:10px 12px;border:1px 
     <div class="row" id="locBtns" hidden><button class="sm" id="retryLoc" type="button">Try again</button><button class="sm" id="placeMe" type="button">Mark me on the map</button></div></div>
   <div class="card" id="sosCard" hidden><div class="stat" id="sosStat"><span class="dot"></span><h2 id="sosT">SOS sent</h2></div><p id="sosP"></p><div class="facts" id="sosFacts"></div>
     <div class="row"><button class="sm" id="sosEdit" type="button">Add details</button><button class="sm" id="sosCancel" type="button">I no longer need help</button></div></div>
-  <div id="sosWrap"><p class="lead">One tap sends your location to responders</p>
-    <button id="sosBtn" type="button" aria-label="Send SOS now">SOS<small>Tap for help</small></button></div>
+  <div id="sosWrap"><p class="lead">One tap sends your location. You get 3 seconds to cancel.</p>
+    <button id="sosBtn" type="button" aria-label="Send SOS">SOS<small>Tap for help</small></button></div>
   <div class="row"><button id="safeBtn" type="button">I'm safe</button><button class="go" id="routeBtn" type="button">Way to safety</button></div>
   <div class="card ok" id="routeCard" hidden style="margin-top:12px"><h2 id="routeT"></h2><p id="routeP"></p>
     <a class="btn pri" id="gmaps" target="_blank" rel="noopener">Open in Google Maps</a></div>
@@ -90,6 +104,8 @@ textarea{width:100%;margin-top:8px;min-height:64px;padding:10px 12px;border:1px 
   <button class="pri" id="send" type="button" style="background:var(--red);min-height:56px;font-size:17px">Update my SOS</button>
   <button id="sheetX" type="button">Done</button><p class="fine" id="sendMsg"></p>
 </div></div>
+<div id="cd" hidden role="alertdialog" aria-labelledby="cdT"><div class="cdwrap"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="bg" cx="60" cy="60" r="52"/><circle class="fg" id="cdFg" cx="60" cy="60" r="52"/></svg><b id="cdN">3</b></div>
+  <h2 id="cdT">Sending your SOS</h2><p>Your location goes to responders.</p><button id="cdNow" type="button">Send now</button><button id="cdX" type="button" class="ghost">Cancel</button></div>
 <div id="alert" hidden role="alertdialog" aria-labelledby="alT"><div class="ico">!</div><h2 id="alT">Alert</h2><p id="alM"></p><p class="meta" id="alMeta"></p>
   <div class="sp"></div><button id="alRoute" type="button">Show me the way to safety</button><button id="alSafe" type="button" class="ghost">I'm safe</button><button id="alSos" type="button" class="ghost">I need help (SOS)</button><button id="alX" type="button" class="ghost">Dismiss</button></div>
 <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
@@ -99,6 +115,7 @@ const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
 let dev=store.get('sos-device')||'';
 if(!/^[A-Za-z0-9_-]{4,64}$/.test(dev)){dev='p'+Math.random().toString(36).slice(2,12)+Date.now().toString(36);store.set('sos-device',dev)}
+let off=0,speed=10,trk=null,trkAt=null,tMark=null;
 let map,me,dest,area=null,pos=null,gps=null,shift=null,manual=false,placing=false,ws=null,wsUp=false,mySos=null,safe=false,people=1,audio=null,lastSent=0,pendingSos=false,watchId=null;
 const KIND={open_space:'Open ground',shelter:'Shelter',school:'School (shelter)'};
 function circle(lon,lat,km,n=64){const c=[];for(let i=0;i<=n;i++){const a=i/n*2*Math.PI;c.push([lon+km/(111.32*Math.cos(lat*Math.PI/180))*Math.cos(a),lat+km/110.54*Math.sin(a)])}return{type:'Feature',geometry:{type:'Polygon',coordinates:[c]}}}
@@ -110,6 +127,38 @@ function unlock(){if(audio)return;try{audio=new (window.AudioContext||window.web
 ['pointerdown','touchstart','keydown'].forEach(ev=>addEventListener(ev,unlock,{once:true,passive:true}));
 let wake=null;async function keepAwake(){try{if('wakeLock' in navigator&&document.visibilityState==='visible'&&!wake){wake=await navigator.wakeLock.request('screen');wake.addEventListener('release',()=>wake=null)}}catch(e){}}
 document.addEventListener('visibilitychange',keepAwake);addEventListener('pointerdown',keepAwake,{once:true});keepAwake();
+
+// ---------- haptics, a soft chime, and the 3-second countdown before an SOS goes out ----------
+const buzz=p=>{try{navigator.vibrate&&navigator.vibrate(p)}catch(e){}};
+function chime(){if(!audio)return;try{[[659,0,.5],[988,.12,.8]].forEach(([f,d,l])=>{const o=audio.createOscillator(),g=audio.createGain(),t=audio.currentTime+d;o.frequency.value=f;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.12,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+l);o.connect(g).connect(audio.destination);o.start(t);o.stop(t+l+.05)})}catch(e){}}
+let cdT=null;
+function stopCd(){clearInterval(cdT);cdT=null;$('cd').hidden=true}
+function startCountdown(){
+  unlock();if(cdT)return;const C=2*Math.PI*52,fg=$('cdFg'),t0=performance.now();let shown=4;$('cd').hidden=false;fg.style.strokeDasharray=C;buzz(40);
+  const draw=()=>{const left=3-(performance.now()-t0)/1000;if(left<=0){stopCd();buzz([220,80,220]);sosNow();return}
+    const n=Math.ceil(left);if(n!==shown){shown=n;$('cdN').textContent=n;buzz(30)}fg.style.strokeDashoffset=C*(1-left/3)};
+  draw();cdT=setInterval(draw,50);
+}
+$('cdX').onclick=stopCd;$('cdNow').onclick=()=>{stopCd();buzz([220,80,220]);sosNow()};
+
+// ---------- a team driving to you: moves along its route at the demo speed, with a countdown ----------
+const fmtT=s=>{s=Math.max(0,Math.round(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+function trackTeam(s){
+  const on=s&&s.status==='assigned'&&s.route&&s.eta_min!=null;
+  if(!on){clearInterval(trk);trk=null;trkAt=null;if(tMark){tMark.remove();tMark=null}return}
+  if(trkAt===s.assigned_at&&trk)return;                      // same team, same trip: keep it running
+  clearInterval(trk);trkAt=s.assigned_at;
+  const c=s.route.geometry.coordinates,k=Math.cos(c[0][1]*Math.PI/180),cum=[0];
+  for(let j=1;j<c.length;j++)cum.push(cum[j-1]+Math.hypot((c[j][0]-c[j-1][0])*k,c[j][1]-c[j-1][1]));
+  const len=cum[cum.length-1]||1e-9,dur=Math.max(4,s.eta_min*60);
+  const at=f=>{const d=f*len;let j=1;while(j<cum.length-1&&cum[j]<d)j++;const u=(d-cum[j-1])/Math.max(cum[j]-cum[j-1],1e-12);return[c[j-1][0]+(c[j][0]-c[j-1][0])*u,c[j-1][1]+(c[j][1]-c[j-1][1])*u]};
+  let prog=Math.min(1,Math.max(0,(Date.now()/1000+off-(s.assigned_at||0))*speed/dur)),last=performance.now(),arrived=false;
+  if(!tMark){const e=document.createElement('div');e.className='team';tMark=new maplibregl.Marker({element:e})}
+  trk=setInterval(()=>{const n=performance.now(),dt=(n-last)/1000;last=n;prog=Math.min(1,prog+dt*speed/dur);
+    if(map)tMark.setLngLat(at(prog)).addTo(map);
+    const left=(1-prog)*dur/speed;$('sosT').textContent=prog>=1?'Help has arrived':'Help is on the way';$('sosP').innerHTML=prog>=1?`${esc(s.team||'A team')} is here.`:`${esc(s.team||'A team')} arrives in <span class="eta" style="display:block">${fmtT(left)}</span>`;
+    if(prog>=1&&!arrived){arrived=true;buzz([300,100,300,100,500]);chime();clearInterval(trk);trk=null}},250);
+}
 
 // ---------- start right away: map, live connection, location prompt ----------
 (async function boot(){
@@ -185,6 +234,7 @@ function connect(){
   ws.onopen=()=>{wsUp=true;c.className='conn on';c.lastChild.textContent='Connected';sendLoc(true);if(safe)ws.send(JSON.stringify({type:'safe',safe:true}))};
   ws.onclose=()=>{wsUp=false;c.className='conn off';c.lastChild.textContent='Reconnecting';setTimeout(connect,2000)};
   ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(_){return}
+    if(m.now)off=m.now-Date.now()/1000;if(m.speed)speed=m.speed;
     if(m.type==='hello'){
       // the server forgot an SOS this phone still has open (it restarted): send it again instead of silently dropping it
       if(!m.sos&&mySos&&mySos.status!=='resolved'&&pos){sendSos();return}
@@ -244,7 +294,7 @@ function sosNow(){
   else{pendingSos=true;$('sosCard').hidden=false;$('sosStat').className='stat new';$('sosT').textContent='Sending as soon as your location is found…';$('sosP').textContent='Keep this page open.';$('sosCard').className='card bad';
     if(!manual&&window.isSecureContext&&navigator.geolocation)navigator.geolocation.getCurrentPosition(onFix,onFixError,{enableHighAccuracy:true,timeout:15000,maximumAge:0})}
 }
-$('sosBtn').onclick=sosNow;
+$('sosBtn').onclick=startCountdown;
 $('sosEdit').onclick=()=>{if(mySos){$('fTrapped').checked=mySos.trapped;$('fInjured').checked=mySos.injured;people=mySos.people;$('fNote').value=mySos.note||''}
   $('sheetT').textContent='Your SOS';$('sheetP').textContent='Change anything responders should know:';$('pN').textContent=people;$('sendMsg').textContent='';$('sheet').hidden=false};
 $('sheetX').onclick=()=>$('sheet').hidden=true;
@@ -271,7 +321,8 @@ function setSos(s){
   const rk=s.route&&s.status==='assigned'?s.id+':'+s.team:null,newRoute=rk&&rk!==setSos.rk;setSos.rk=rk;
   if(map&&map.getSource('team')){map.getSource('team').setData(s.route&&s.status==='assigned'?s.route:EMPTY);
     if(newRoute){const co=s.route.geometry.coordinates,b=co.reduce((b,p)=>[[Math.min(b[0][0],p[0]),Math.min(b[0][1],p[1])],[Math.max(b[1][0],p[0]),Math.max(b[1][1],p[1])]],[co[0],co[0]]);map.fitBounds(b,{padding:40,maxZoom:16})}}
-  if(newRoute)try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}
+  if(newRoute){buzz([200,100,200]);chime()}
+  trackTeam(s);
 }
 
 // ---------- way to safety ----------

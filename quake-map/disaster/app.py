@@ -8,8 +8,9 @@ from overture import fetch_buildings, latest_release
 from places import reverse_name
 from areas import Registry
 from jobs import Jobs
-import exposure, responder_layer, report, confidence, hazards, re, tiles, live
+import exposure, responder_layer, report, confidence, hazards, re, tiles, live, insights, cascade, presets
 import base64
+import numpy as np
 
 here = pathlib.Path(__file__).resolve().parent
 root = here.parent if here.name == "backend" else here   # works with or without a backend/ folder
@@ -42,6 +43,30 @@ class FloodIn(BaseModel):
     raster: str = Field(min_length=1, max_length=80)     # name of an uploaded depth raster
     scale: float = Field(1.0, gt=0, le=10)               # depth multiplier (e.g. climate or what-if factor)
     time_of_day: str = Field("night", pattern="^(night|day|commute)$")
+
+class AftershockIn(BaseModel):
+    magnitude: float | None = Field(None, ge=2, le=9.5)    # default: 1.2 below the mainshock
+    lat: float | None = Field(None, ge=-90, le=90)         # default: a few km from the mainshock
+    lon: float | None = Field(None, ge=-180, le=180)
+    depth_km: float | None = Field(None, ge=0, le=700)
+
+class Scenario(BaseModel):
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+    depth_km: float = Field(10, ge=0, le=700)
+    magnitude: float = Field(ge=3, le=9.5)
+    time_of_day: str = Field("night", pattern="^(night|day|commute)$")
+    strike: float | None = Field(None, ge=0, lt=360)
+    dip: float | None = Field(None, gt=0, le=90)
+    rake: float | None = Field(None, ge=-180, le=180)
+    label: str = Field("", max_length=60)
+
+class CompareIn(BaseModel):
+    a: Scenario
+    b: Scenario
+
+class AskIn(BaseModel):
+    question: str = Field(min_length=1, max_length=400)
 
 class Teams(BaseModel):
     run: int | None = None                       # the simulation the page is showing; a mismatch means the page is stale
@@ -219,6 +244,13 @@ def create_app(data_dir=None):
     def home():
         return FileResponse(index, headers={"Cache-Control": "no-store"})
 
+    @app.get("/ui/{name}")
+    def ui_file(name: str):
+        """The command-centre stylesheet and script (small fixed set, never cached so edits show on reload)."""
+        if name not in ("command.css", "command.js"):
+            raise HTTPException(404, "Unknown file.")
+        return FileResponse(here / "ui" / name, headers={"Cache-Control": "no-store"})
+
     @app.get("/api/meta")
     def meta():
         m = st.model
@@ -383,6 +415,117 @@ def create_app(data_dir=None):
             raise HTTPException(409, str(ex))
         except ValueError as ex:
             raise HTTPException(422, str(ex))
+
+    # ---- aftershock, scenario comparison, uncertainty map, knock-on failures ----
+    scenario_lock = threading.Lock()
+
+    @app.post("/api/aftershock")
+    def aftershock(q: AftershockIn):
+        """A second earthquake on top of the damage the last one left. Defaults: 1.2 magnitude units lower, a few km away, same depth."""
+        m = st.need()
+        if m.last is None or getattr(m, "hazard", None) != "earthquake":
+            raise HTTPException(409, "Run an earthquake first: an aftershock builds on its damage.")
+        sc = m.scenario
+        rng = np.random.default_rng(int(m.run_id))
+        ang, r_km = rng.uniform(0, 2 * np.pi), rng.uniform(4, 10)
+        lat = q.lat if q.lat is not None else sc["lat"] + r_km * np.cos(ang) / 111.2
+        lon = q.lon if q.lon is not None else sc["lon"] + r_km * np.sin(ang) / (111.2 * np.cos(np.radians(sc["lat"])))
+        with scenario_lock:
+            try:
+                out = m.run_aftershock(float(lat), float(lon), q.depth_km if q.depth_km is not None else sc["depth_km"],
+                                       q.magnitude if q.magnitude is not None else round(max(3.0, sc["mag"] - 1.2), 1), time_of_day=sc["time_of_day"])
+            except ValueError as ex:
+                raise HTTPException(409, str(ex))
+        st.cancel_mc()
+        return JSONResponse(out)
+
+    @app.post("/api/compare")
+    def compare(q: CompareIn):
+        """Two earthquake scenarios on this area, side by side. The scenario on the map is put back afterwards, so the page is unaffected."""
+        m = st.need()
+        with scenario_lock:
+            snap = m.snapshot_state()
+            try:
+                res = {}
+                for key, s in (("a", q.a), ("b", q.b)):
+                    out = m.run(s.lat, s.lon, s.depth_km, s.magnitude, time_of_day=s.time_of_day, strike=s.strike, dip=s.dip, rake=s.rake)
+                    res[key] = {"label": s.label or f"M{s.magnitude}, {s.time_of_day}", "scenario": s.model_dump(), "summary": out["summary"], "heat": out["heat"],
+                                "cells": out["cells"], "rupture": out.get("rupture")}
+            finally:
+                m.restore_state(snap)
+        w, s_, e, n = (float(x) for x in m.bounds)
+        res["bounds"] = [w, s_, e, n]
+        return JSONResponse(res)
+
+    @app.get("/api/confmap/{run}")
+    def confidence_map(run: int):
+        """Where the damage estimate is least certain: squares of the heat grid with the mean spread (90th percentile minus mean) of the chance of
+        heavy damage from the Monte Carlo. u is each square's rank among all squares, 0 to 1."""
+        m = st.need()
+        mc = getattr(m, "mc", None)
+        if run != m.run_id or m.last is None:
+            raise HTTPException(409, "These results are out of date. Run the simulation again.")
+        if not mc or mc.get("run") != run:
+            raise HTTPException(409, "The uncertainty run is not finished yet.")
+        ext = max((m.x.max() - m.x.min()) * (m.y.max() - m.y.min()), 1.0)
+        sp = float(np.clip(np.ceil(np.sqrt(ext / m.HEAT_POINTS) / 50.0) * 50.0, 100.0, 500.0))
+        key = (m.x // sp).astype(np.int64) * 1_000_000 + (m.y // sp).astype(np.int64)
+        import pandas as pd
+        d = pd.DataFrame({"key": key, "lat": m.lat, "lon": m.lon, "spread": np.asarray(mc["p_extensive_p90"], float) - np.asarray(mc["p_extensive_mean"], float)})
+        c = d.groupby("key").agg(lat=("lat", "mean"), lon=("lon", "mean"), spread=("spread", "mean"), n=("spread", "size"))
+        u = c.spread.rank(pct=True).to_numpy()
+        hy, hx = sp / 2 / 110540.0, sp / 2 / (111320.0 * np.cos(np.radians(float(np.mean(m.lat)))))
+        feats = [{"type": "Feature", "properties": {"u": round(float(ui), 2), "spread": round(float(sd), 3)},
+                  "geometry": {"type": "Polygon", "coordinates": [[[lo - hx, la - hy], [lo + hx, la - hy], [lo + hx, la + hy], [lo - hx, la + hy], [lo - hx, la - hy]]]}}
+                 for lo, la, sd, ui in zip(c.lon.round(5), c.lat.round(5), c.spread, u)]
+        return {"run": run, "features": feats, "type": "FeatureCollection", "spacing_m": sp}
+
+    @app.get("/api/cascade/{run}")
+    def cascade_result(run: int):
+        m = st.need()
+        if run != m.run_id or m.last is None:
+            raise HTTPException(409, "These results are out of date. Run the simulation again.")
+        c = getattr(m, "_cascade", None)
+        if c is None or c[0] != run:
+            bridges = []
+            if st.active_id:
+                bridges = cascade.load_bridges(st.data, st.active_id, tuple(float(x) for x in m.bounds))
+            m._cascade = c = (run, cascade.compute(m, bridges))
+        return c[1]
+
+    # ---- presets, situation report, assistant ----
+    @app.get("/api/presets")
+    def preset_list():
+        return {"presets": presets.public()}
+
+    @app.get("/api/ai/status")
+    def ai_status():
+        return insights.ai_status()
+
+    def facts_for(run):
+        m = st.need()
+        if m.last is None or (run and run != m.run_id):
+            raise HTTPException(409, "These results are out of date. Run the simulation again.")
+        layer = st.layer if st.layer is not None and st.layer.model is m else None
+        casc = None
+        if getattr(m, "hazard", None) == "earthquake":
+            try:
+                casc = cascade_result(m.run_id)
+            except Exception:
+                casc = None
+        return insights.build_facts(st, layer, getattr(app.state, "live", None), casc)
+
+    @app.post("/api/brief/{run}")
+    def situation_report(run: int):
+        """A written situation report for the run on the map: Claude when a key is configured, otherwise the built-in writer."""
+        f = facts_for(run)
+        out = insights.brief(f)
+        out["run"] = run
+        return out
+
+    @app.post("/api/assistant/{run}")
+    def assistant(run: int, q: AskIn):
+        return insights.answer(facts_for(run), q.question)
 
     # ---- static vector tiles (Phase 6.1) ----
     @app.get("/api/tiles/status")

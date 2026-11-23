@@ -221,6 +221,47 @@ class Model:
         self.summary = out["summary"]
         return out
 
+    # attributes a scenario run replaces; saved and restored around side runs (scenario comparison) so the page's run stays the model's run
+    _RUN_STATE = ("haz", "last", "run_id", "cells", "hazard", "scenario", "summary", "mc")
+
+    def snapshot_state(self):
+        return {k: self.__dict__[k] for k in self._RUN_STATE if k in self.__dict__}
+
+    def restore_state(self, snap):
+        for k in self._RUN_STATE:
+            if k in snap:
+                self.__dict__[k] = snap[k]
+            else:
+                self.__dict__.pop(k, None)
+
+    def run_aftershock(self, lat, lon, depth_km, mag, time_of_day=None, strike=None, dip=None, rake=None):
+        """A second earthquake on the damage the last run left (see hazards/aftershock.py). The result is cumulative: people at risk,
+        collapses and casualties are totals for both shocks; `aftershock` in the output holds what the second shock added."""
+        from hazards.aftershock import AftershockHazard
+        if self.last is None or getattr(self, "hazard", None) != "earthquake":
+            raise ValueError("Run an earthquake first: an aftershock builds on the damage it left.")
+        prior = self.last[["p_slight", "p_moderate", "p_extensive", "p_collapse"]].to_numpy(float)
+        before = dict(self.summary)
+        sc = dict(self.scenario)
+        tod = time_of_day or sc.get("time_of_day", "night")
+        out = self.run_hazard(AftershockHazard(prior), dict(lat=lat, lon=lon, depth_km=depth_km, mag=mag, time_of_day=tod,
+                                                          strike=strike, dip=dip, rake=rake, pga_override=None))
+        s = out["summary"]
+        c0, c1 = before.get("casualties"), s.get("casualties")
+        if c0 and c1:                                   # casualties were computed for the aftershock alone: add the first shock's
+            tot = np.array([c0["injury_1"] + c1["injury_1"], c0["injury_2"] + c1["injury_2"], c0["injury_3"] + c1["injury_3"], c0["deaths"] + c1["deaths"]], float)
+            s["casualties"] = casualty.summary(tot, c0["pager_deaths"] + c1["pager_deaths"], self._cas[1])
+        s["aftershock"] = True
+        self.scenario["aftershock"] = True
+        out["aftershock"] = {"magnitude": mag, "lat": lat, "lon": lon, "depth_km": depth_km,
+                             "added_collapses": s["expected_collapses"] - before["expected_collapses"],
+                             "added_heavy": s["expected_heavy"] - before["expected_heavy"],
+                             "added_people_at_risk": s["people_at_risk"] - before["people_at_risk"],
+                             "added_deaths": (s["casualties"]["deaths"] - c0["deaths"]) if c0 and c1 else None,
+                             "before": {k: before[k] for k in ("people_at_risk", "expected_collapses", "expected_heavy")},
+                             "weakening": "Buildings already damaged are shaken up to 60% harder (an assumption)."}
+        return out
+
     HEAT_POINTS = 12000      # about this many grid points cover the area: enough for a smooth surface, small enough to send with every run
 
     def _heat_grid(self, p_ext, risk):

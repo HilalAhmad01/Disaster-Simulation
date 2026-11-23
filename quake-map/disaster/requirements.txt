@@ -22,3 +22,4 @@ scikit-learn
 pmtiles
 mapbox-vector-tile
 pillow
+anthropic   # optional: the situation report and assistant use Claude when ANTHROPIC_API_KEY is set

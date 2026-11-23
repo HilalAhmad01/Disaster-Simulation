@@ -13,6 +13,7 @@ import numpy as np
 from fastapi import HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+from scipy.optimize import linear_sum_assignment
 from scipy.sparse.csgraph import dijkstra
 from scipy.spatial import cKDTree
 import responders as P, roads as R
@@ -32,6 +33,13 @@ ANY_SAFE = ("open_space", "shelter", "school")
 TEAM_POOL = {"fire_station": ("fire_station",), "ambulance": ("ambulance", "hospital"), "police": ("police",)}
 TEAM_NAME = {"fire_station": "Fire team", "ambulance": "Ambulance", "police": "Police team"}
 LEVELS = ("low", "medium", "high", "critical")
+UNITS = {"fire_station": 2, "ambulance": 2, "hospital": 1, "police": 2}      # response units a station can send out at once (assumed)
+POOL_OF = {"fire_station": "fire_station", "ambulance": "ambulance", "hospital": "ambulance", "police": "police"}   # facility kind -> team kind it supplies
+FUEL_TANK_L, FUEL_L_PER_KM = 400.0, 0.5   # simulated fuel store of a station and use per km driven (out and back counts double)
+LEVEL_W = {"critical": 4.0, "high": 3.0, "medium": 2.0, "low": 1.0}      # how much an extra minute of waiting costs, by call level
+UNSERVED_MIN = 90.0                  # a call nobody can reach is charged this many minutes when plans are compared
+SPEEDS = (1, 5, 10, 30, 60)          # demo clock: teams drive this many times faster than real time
+MAX_PLAN_CALLS = 80
 
 # ---------------------------------------------------------------- pure helpers (tested without a server)
 
@@ -203,10 +211,14 @@ def safe_route(layer, lat, lon, hazard=None):
                            "walk_min": max(1, round(length / WALK_MS / 60)), "p_open": round(p_open, 3), "risky_streets": int(risky),
                            "hazard": hazard or "earthquake", "gmaps": gmaps_link(float(f.lat), float(f.lon), lat, lon)}}
 
-def _team_pool(layer, state, kind):
-    return np.flatnonzero(state.kind.isin(TEAM_POOL[kind]).to_numpy() & ~state.may_not_work.to_numpy() & (layer.fnode >= 0))
+def _team_pool(layer, state, kind, avail=None):
+    """Working stations that supply `kind`; with `avail` (a set of facility ids), only those with a free unit and fuel."""
+    m = state.kind.isin(TEAM_POOL[kind]).to_numpy() & ~state.may_not_work.to_numpy() & (layer.fnode >= 0)
+    if avail is not None:
+        m = m & layer.fac.id.isin(avail).to_numpy()
+    return np.flatnonzero(m)
 
-def team_options(layer, lat, lon, per_kind=2):
+def team_options(layer, lat, lon, per_kind=2, avail=None):
     """The nearest working fire stations, ambulance points (or hospitals) and police stations to (lat, lon), by driving time on
     streets weighted by the chance debris blocks them. One Dijkstra on the reversed graph from the caller gives every
     facility's time at once. Returns a list of {kind, facility_id, name, eta_min} (nearest first within each kind)."""
@@ -216,7 +228,7 @@ def team_options(layer, lat, lon, per_kind=2):
     d = dijkstra(M.T.tocsr(), directed=True, indices=dst)
     out = []
     for kind in TEAM_POOL:
-        pool = _team_pool(layer, state, kind)
+        pool = _team_pool(layer, state, kind, avail)
         t = d[layer.fnode[pool]] if len(pool) else np.array([])
         for j in np.argsort(t, kind="stable")[:per_kind]:
             if np.isfinite(t[j]):
@@ -225,7 +237,7 @@ def team_options(layer, lat, lon, per_kind=2):
                             "facility_kind": str(layer.fac.kind[i]), "eta_min": round(float(t[j]) / 60, 1)})
     return out
 
-def team_route(layer, kind, lat, lon, facility_id=None):
+def team_route(layer, kind, lat, lon, facility_id=None, avail=None):
     """Driving route to (lat, lon) from facility `facility_id`, or from the nearest working facility of `kind`."""
     state = layer.facility_state()
     p_edge = blockage_now(layer)
@@ -235,11 +247,13 @@ def team_route(layer, kind, lat, lon, facility_id=None):
         hit = np.flatnonzero(layer.fac.id.to_numpy() == facility_id)
         if len(hit) == 0 or layer.fnode[hit[0]] < 0:
             raise ValueError("That station is not on the street map.")
+        if avail is not None and facility_id not in avail:
+            raise ValueError("That station has no free unit or fuel left.")
         best = int(hit[0])
     else:
-        pool = _team_pool(layer, state, kind)
+        pool = _team_pool(layer, state, kind, avail)
         if len(pool) == 0:
-            raise ValueError(f"No working {kind.replace('_', ' ')} found in this area.")
+            raise ValueError(f"No working {kind.replace('_', ' ')} with a free unit found in this area.")
         d, _, src = dijkstra(M, directed=True, indices=np.unique(layer.fnode[pool]), min_only=True, return_predecessors=True)
         if not np.isfinite(d[dst]):
             raise ValueError("No open road route reaches this spot.")
@@ -251,6 +265,95 @@ def team_route(layer, kind, lat, lon, facility_id=None):
     gj["geometry"]["coordinates"].append([round(lon, 6), round(lat, 6)])
     gj["properties"].update(facility=layer.label(best), facility_id=int(layer.fac.id[best]), kind=kind)
     return gj
+
+def route_km(gj):
+    """Length in km of a route feature (LineString lon/lat)."""
+    c = np.asarray(gj["geometry"]["coordinates"], float)
+    if len(c) < 2:
+        return 0.0
+    x, y = metres(c[0][1], c[0][0], c[:, 1], c[:, 0])
+    return float(np.hypot(np.diff(x), np.diff(y)).sum() / 1000.0)
+
+def need_kind(s):
+    """The kind of team a call needs: rescue for trapped people, an ambulance for injured, otherwise police."""
+    return "fire_station" if s.get("trapped") else "ambulance" if s.get("injured") else "police"
+
+def solve_kind(T, w, arrival):
+    """One kind of team. T: (calls, units) minutes of driving (inf: cannot reach); w: weight per call (higher = more urgent);
+    arrival: order calls came in. Returns (best, naive): dicts call -> unit.
+    best minimises sum(w x minutes) over everyone at once; a call left without a unit is charged UNSERVED_MIN minutes, so with too few
+    units the most urgent calls are served. naive is what a dispatcher does one call at a time: oldest call first takes the nearest free unit."""
+    n, k = T.shape
+    big = 1e7
+    C = np.full((n, k + n), 0.0)
+    C[:, :k] = np.where(np.isfinite(T), T * w[:, None], big)
+    C[:, k:] = (w * UNSERVED_MIN)[:, None]
+    ci, uj = linear_sum_assignment(C)
+    best = {int(i): int(j) for i, j in zip(ci, uj) if j < k and C[i, j] < big}
+    free, naive = set(range(k)), {}
+    for i in np.argsort(arrival, kind="stable"):
+        cand = [j for j in free if np.isfinite(T[i, j])]
+        if cand:
+            j = min(cand, key=lambda j: T[i, j])
+            naive[int(i)] = j
+            free.discard(j)
+    return best, naive
+
+def plan_stats(calls, best_eta, naive_eta):
+    """Compare two plans. best_eta / naive_eta: call index -> minutes until a team arrives (absent: nobody comes)."""
+    w = np.array([LEVEL_W.get(c["level"], 1.0) for c in calls])
+    eta = lambda plan: np.array([plan.get(i, UNSERVED_MIN) for i in range(len(calls))], float)
+    eb, en = eta(best_eta), eta(naive_eta)
+    cb, cn = float((w * eb).sum()), float((w * en).sum())
+    urgent = np.array([c["level"] in ("critical", "high") for c in calls], bool)
+    return {"weighted_best": round(cb, 1), "weighted_naive": round(cn, 1), "weighted_saved_pct": round(100.0 * (cn - cb) / cn, 1) if cn > 0 else 0.0,
+            "urgent_calls": int(urgent.sum()), "urgent_avg_best": round(float(eb[urgent].mean()), 1) if urgent.any() else None,
+            "urgent_avg_naive": round(float(en[urgent].mean()), 1) if urgent.any() else None,
+            "urgent_minutes_saved": round(float((en[urgent] - eb[urgent]).sum()), 1) if urgent.any() else 0.0,
+            "avg_best": round(float(eb.mean()), 1) if len(eb) else None, "avg_naive": round(float(en.mean()), 1) if len(en) else None,
+            "served_best": len(best_eta), "served_naive": len(naive_eta), "calls": len(calls)}
+
+def plan_teams(layer, calls, free):
+    """Global team assignment for open calls. calls: dicts with id, lat, lon, level, trapped, injured, created. free: facility id -> units
+    still free there. Every free unit of every working station is a candidate; driving times allow for streets debris may block.
+    Returns {"plan": [...], "unserved": [call ids], "stats": {...}}."""
+    state = layer.facility_state()
+    avail = {f for f, k in free.items() if k > 0}
+    M = layer.graph.matrix(P.expected_cost(layer.net, blockage_now(layer))).T.tocsr()
+    nodes = np.array([_node_of(layer, c["lat"], c["lon"])[0] for c in calls], int)
+    fnodes = np.unique(layer.fnode[layer.fnode >= 0])
+    col = {int(n): j for j, n in enumerate(fnodes)}
+    D = []                                      # minutes from every station node to every call, in chunks of 20 calls to bound memory
+    for a in range(0, len(calls), 20):
+        D.append(dijkstra(M, directed=True, indices=nodes[a:a + 20], limit=7200.0)[:, fnodes])
+    D = (np.vstack(D) if D else np.zeros((0, len(fnodes)))) / 60.0
+    kinds = np.array([need_kind(c) for c in calls])
+    plan, unserved, best_eta, naive_eta = [], [], {}, {}
+    for kind in TEAM_POOL:
+        ci = np.flatnonzero(kinds == kind)
+        if len(ci) == 0:
+            continue
+        pool = _team_pool(layer, state, kind, avail)
+        units = [(int(i), u) for i in pool for u in range(int(free.get(int(layer.fac.id[i]), 0)))]
+        if not units:
+            unserved += [calls[int(i)]["id"] for i in ci]
+            continue
+        T = np.array([[D[i, col[int(layer.fnode[f])]] for f, _ in units] for i in ci])
+        w = np.array([LEVEL_W.get(calls[int(i)]["level"], 1.0) for i in ci])
+        best, naive = solve_kind(T, w, np.array([calls[int(i)]["created"] for i in ci]))
+        for a, i in enumerate(ci):
+            i = int(i)
+            if a in naive:
+                naive_eta[i] = float(T[a, naive[a]])
+            if a in best:
+                f = units[best[a]][0]
+                best_eta[i] = float(T[a, best[a]])
+                plan.append({"sos": calls[i]["id"], "kind": kind, "facility_id": int(layer.fac.id[f]), "name": layer.label(f), "eta_min": round(best_eta[i], 1),
+                             "naive_eta_min": round(naive_eta[i], 1) if i in naive_eta else None, "level": calls[i]["level"]})
+            else:
+                unserved.append(calls[i]["id"])
+    plan.sort(key=lambda x: (-LEVEL_W.get(x["level"], 1.0), x["eta_min"]))
+    return {"plan": plan, "unserved": unserved, "stats": plan_stats(calls, best_eta, naive_eta)}
 
 # ---------------------------------------------------------------- the hub (in-memory state + sockets)
 
@@ -291,6 +394,8 @@ class Hub:
         self.sos = {}               # id -> SOS dict (public fields only)
         self.alerts = []            # newest last
         self.ids = itertools.count(1)
+        self.speed = 10.0           # demo clock: teams drive this many times faster than real time
+        self.fuel = {}              # facility id -> litres used (simulated)
 
     # -- views --
     def phone_view(self, p):
@@ -298,7 +403,7 @@ class Hub:
 
     def snapshot(self):
         return {"type": "snapshot", "sos": sorted(self.sos.values(), key=lambda s: s["id"]),
-                "phones": [self.phone_view(p) for p in self.phones.values()], "alerts": self.alerts[-20:], "now": time.time()}
+                "phones": [self.phone_view(p) for p in self.phones.values()], "alerts": self.alerts[-20:], "now": time.time(), "speed": self.speed}
 
     def open_sos_of(self, device):
         return next((s for s in self.sos.values() if s["device"] == device and s["status"] != "resolved"), None)
@@ -332,9 +437,10 @@ class Hub:
             await self.to_dash({"type": "phone", "phone": self.phone_view(p)})
 
     async def sos_changed(self, s):
-        await self.to_dash({"type": "sos", "sos": s})
+        now = time.time()                  # phones and dashboards line their clocks up with the server's to animate a team's drive
+        await self.to_dash({"type": "sos", "sos": s, "now": now, "speed": self.speed})
         if not s.get("sim"):
-            await self.to_phone(s["device"], {"type": "sos", "sos": s})
+            await self.to_phone(s["device"], {"type": "sos", "sos": s, "now": now, "speed": self.speed})
 
     def alerts_for(self, lat, lon, since, seen=()):
         return [a for a in self.alerts if a["sent"] >= since and a["id"] not in seen and dist_m(a["lat"], a["lon"], lat, lon) <= a["radius_km"] * 1000]
@@ -381,6 +487,34 @@ def attach(app, st, get_layer):
             p = hub.phones[device] = {"device": device, "lat": None, "lon": None, "acc": None, "demo": False, "online": False, "safe": False}
         p.update(kw, seen=time.time())
         return p
+
+    # ---- fleet: response units per station (assumed), how many are out, simulated fuel ----
+    def free_units(layer):
+        """Facility id -> units still free (0 when its fuel store is empty). Only kinds in UNITS have units."""
+        busy = {}
+        for x in hub.sos.values():
+            if x["status"] == "assigned" and x.get("team_fid") is not None:
+                busy[x["team_fid"]] = busy.get(x["team_fid"], 0) + 1
+        out = {}
+        for fid, kind in zip(layer.fac.id.to_numpy(), layer.fac.kind.to_numpy()):
+            if kind in UNITS:
+                fid = int(fid)
+                out[fid] = 0 if hub.fuel.get(fid, 0.0) >= FUEL_TANK_L else max(0, UNITS[kind] - busy.get(fid, 0))
+        return out
+
+    def avail_ids(layer):
+        return {f for f, k in free_units(layer).items() if k > 0}
+
+    def assign_now(s, kind, gj, note):
+        """Record a team on a call: the route, when it left, and the fuel it uses (simulated, out and back)."""
+        now = time.time()
+        km = route_km(gj) if gj else 0.0
+        fid = gj["properties"].get("facility_id") if gj else None
+        if fid is not None:
+            hub.fuel[fid] = hub.fuel.get(fid, 0.0) + round(km * 2 * FUEL_L_PER_KM, 1)
+        s.update(status="assigned", updated=now, assigned_at=now, team_kind=kind, team_fid=fid, route=gj, route_km=round(km, 2), route_note=note,
+                 team=(f"{TEAM_NAME[kind]} from {gj['properties']['facility']}" if gj else TEAM_NAME[kind]),
+                 eta_min=(gj["properties"]["expected_time_min"] if gj else None))
 
     @app.get("/sos")
     def sos_page():
@@ -434,11 +568,12 @@ def attach(app, st, get_layer):
             note = "Streets and facilities are not loaded, so no route was drawn (Responders tab: Show hospitals, fire stations and roads)."
         else:
             try:
-                gj = await asyncio.to_thread(team_route, layer, a.kind, s["lat"], s["lon"], a.facility_id)
+                own = s.get("team_fid") if s["status"] == "assigned" else None          # sending a different team frees the first one
+                avail = avail_ids(layer) | ({own} if own is not None else set())
+                gj = await asyncio.to_thread(team_route, layer, a.kind, s["lat"], s["lon"], a.facility_id, avail)
             except ValueError as ex:
                 note = str(ex)
-        s.update(status="assigned", updated=time.time(), team=(f"{TEAM_NAME[a.kind]} from {gj['properties']['facility']}" if gj else TEAM_NAME[a.kind]),
-                 team_kind=a.kind, route=gj, eta_min=(gj["properties"]["expected_time_min"] if gj else None), route_note=note)
+        assign_now(s, a.kind, gj, note)
         await hub.sos_changed(s)
         return s
 
@@ -450,16 +585,117 @@ def attach(app, st, get_layer):
         if layer is None:
             return {"options": [], "note": "Load streets and facilities to get suggested teams with travel times (Responders tab: Show hospitals, fire stations and roads)."}
         try:
-            return {"options": await asyncio.to_thread(team_options, layer, s["lat"], s["lon"]), "note": None}
+            return {"options": await asyncio.to_thread(team_options, layer, s["lat"], s["lon"], 2, avail_ids(layer)), "note": None}
         except ValueError as ex:
             return {"options": [], "note": str(ex)}
 
     @app.post("/api/live/sos/{sid}/resolve")
-    async def sos_resolve(sid: int):
+    async def sos_resolve(sid: int, reason: str = ""):
         s = get_sos(sid)
-        s.update(status="resolved", resolution="resolved by responders", updated=time.time())
+        s.update(status="resolved", resolution="team arrived and the call was closed" if reason == "arrived" else "resolved by responders", updated=time.time())
         await hub.sos_changed(s)
         return s
+
+    class SpeedIn(BaseModel):
+        speed: float = Field(1, ge=1, le=300)
+
+    @app.post("/api/live/speed")
+    async def set_speed(q: SpeedIn):
+        """Demo clock: how many times faster than real time teams drive (their ETA and the animation use it)."""
+        hub.speed = float(q.speed)
+        msg = {"type": "speed", "speed": hub.speed, "now": time.time()}
+        await hub.to_dash(msg)
+        for dev in list(hub.socks):
+            await hub.to_phone(dev, msg)
+        return {"speed": hub.speed}
+
+    class OptimiseIn(BaseModel):
+        apply: bool = False
+
+    @app.post("/api/live/optimise")
+    async def optimise(q: OptimiseIn):
+        """Assign teams to ALL open calls at once (minimising priority-weighted waiting) and compare with answering them one by one,
+        oldest first, each taking the nearest free unit. apply=False only plans; apply=True also sends the teams."""
+        layer = await asyncio.to_thread(get_layer)
+        if layer is None:
+            raise HTTPException(409, "Streets and facilities are not loaded (Responders tab: Show hospitals, fire stations and roads).")
+        open_calls = sorted((x for x in hub.sos.values() if x["status"] == "new"), key=lambda x: (-LEVEL_W.get(x["level"], 1), x["created"]))[:MAX_PLAN_CALLS]
+        if not open_calls:
+            raise HTTPException(409, "There are no open SOS calls to plan.")
+        calls = [{k: x[k] for k in ("id", "lat", "lon", "level", "trapped", "injured", "created")} for x in open_calls]
+        try:
+            res = await asyncio.to_thread(lambda: plan_teams(layer, calls, free_units(layer)))
+        except ValueError as ex:
+            raise HTTPException(409, str(ex))
+        res["applied"] = 0
+        if q.apply and res["plan"]:
+            def routes():
+                out = []
+                for it in res["plan"]:
+                    s = hub.sos.get(it["sos"])
+                    if s is None or s["status"] != "new":
+                        continue
+                    try:
+                        out.append((it, team_route(layer, it["kind"], s["lat"], s["lon"], it["facility_id"]), None))
+                    except ValueError as ex:
+                        out.append((it, None, str(ex)))
+                return out
+            for it, gj, note in await asyncio.to_thread(routes):
+                s = hub.sos.get(it["sos"])
+                if s is None or s["status"] != "new":
+                    continue
+                assign_now(s, it["kind"], gj, note)
+                await hub.sos_changed(s)
+                res["applied"] += 1
+        return res
+
+    @app.get("/api/live/resources")
+    async def resources():
+        """Fleet and hospital capacity: units free / out by kind, simulated fuel, and working beds against the beds the model expects to need."""
+        layer = await asyncio.to_thread(get_layer)
+        if layer is None:
+            return {"loaded": False, "speed": hub.speed}
+        def build():
+            state = layer.facility_state()
+            free = free_units(layer)
+            kinds = {}
+            low_fuel = []
+            for i, r in enumerate(state.itertuples()):
+                if r.kind not in UNITS:
+                    continue
+                team = POOL_OF[r.kind]
+                k = kinds.setdefault(team, {"kind": team, "stations": 0, "working": 0, "units": 0, "free": 0})
+                k["stations"] += 1
+                if r.may_not_work or layer.fnode[i] < 0:
+                    continue
+                fid = int(r.id)
+                k["working"] += 1
+                k["units"] += UNITS[r.kind]
+                k["free"] += free.get(fid, 0)
+                pct = max(0.0, 1.0 - hub.fuel.get(fid, 0.0) / FUEL_TANK_L)
+                if pct < 0.4:
+                    low_fuel.append({"id": fid, "name": layer.label(i), "kind": team, "fuel_pct": round(pct * 100)})
+            for k in kinds.values():
+                k["busy"] = k["units"] - k["free"]
+            h = state[state.kind == "hospital"]
+            beds = np.where(h.beds.notna(), h.beds.to_numpy(float), 60.0) if len(h) else np.array([])
+            working = float((beds * h.functionality.to_numpy(float)).sum()) if len(h) else 0.0
+            m = layer.model
+            cas = (getattr(m, "summary", None) or {}).get("casualties") if m.last is not None else None
+            serious = (cas["injury_2"] + cas["injury_3"]) if cas else None
+            fuel_all = [max(0.0, 1.0 - hub.fuel.get(f, 0.0) / FUEL_TANK_L) for f in free]
+            return {"loaded": True, "speed": hub.speed, "kinds": [kinds[k] for k in ("fire_station", "ambulance", "police") if k in kinds],
+                    "fuel_pct": round(100 * float(np.mean(fuel_all))) if fuel_all else None, "low_fuel": sorted(low_fuel, key=lambda x: x["fuel_pct"])[:6],
+                    "hospitals": {"total": int(len(h)), "working": int((~h.may_not_work).sum()) if len(h) else 0, "beds_working": int(round(working)),
+                                  "beds_assumed": bool(len(h) and h.beds.isna().any()), "serious_injuries_expected": serious,
+                                  "beds_per_serious_injury": round(working / serious, 2) if serious else None},
+                    "note": "Units per station and fuel are simulated for the demo; beds come from OpenStreetMap where tagged (60 assumed otherwise)."}
+        return await asyncio.to_thread(build)
+
+    @app.post("/api/live/refuel")
+    async def refuel():
+        hub.fuel.clear()
+        return {"ok": True}
 
     @app.post("/api/live/alert")
     async def send_alert(a: AlertIn):
@@ -553,6 +789,7 @@ def attach(app, st, get_layer):
                 await hub.to_phone(s["device"], {"type": "sos", "sos": {**s, "status": "resolved", "resolution": "cleared by responders"}})
         if not sim_only:
             hub.alerts.clear()
+            hub.fuel.clear()
             for p in hub.phones.values():
                 p["safe"] = False
         await hub.to_dash(hub.snapshot())
@@ -581,7 +818,7 @@ def attach(app, st, get_layer):
             await ws.close(code=1013)
             return
         hub.socks.setdefault(device, set()).add(ws)
-        await hub._send(ws, {"type": "hello", "sos": hub.open_sos_of(device), "safe": p["safe"]})
+        await hub._send(ws, {"type": "hello", "sos": hub.open_sos_of(device), "safe": p["safe"], "now": time.time(), "speed": hub.speed})
         if p.get("lat") is not None:
             for al in hub.alerts_for(p["lat"], p["lon"], time.time() - ALERT_REPLAY_S, p.get("alerts_seen", ()))[-1:]:
                 await hub.deliver(device, al, p["lat"], p["lon"])

@@ -4,6 +4,39 @@ Every change to a model number must be explained here (see MASTER_PLAN.md sectio
 
 ## Unreleased (master-plan implementation)
 
+### Interface pass (2026-11-23)
+No model numbers change. The first command-centre layer was removed in favour of one placement for each thing: a **topbar** (name, scenario, four headline numbers,
+Guided tour, Ask, Report, View, Dispatch), a **map toolbar** (3D, before/after, fly-through) as the only control over the map, **Compare** and **Aftershock** under
+Run, **Ask** inline in the Summary tab, **Overlays** (uncertainty hatching, knock-on failures) in the Map tab, live phone, safe and SOS counts at the top of the
+Dispatch panel with one primary action (Optimise all teams), and the demo clock inside Demo. The tour is a slim bar at the bottom instead of a floating panel.
+Removed: gradients, glows, glass blur, uppercase tracked labels, glyph and emoji icons (now one 16 px line set), looping pulses (only calls waiting for help ring),
+bars down the side of call rows. Follows the unslop and impeccable guidance: a 4 px grid, graphite ramp, two weights, sentence case, one primary action per region.
+The phone page lost its gradient button, sonar rings and glow. Front end is in `ui/command.css` and `ui/command.js`.
+
+### Command centre: AI report, assistant, optimiser, knock-on failures, compare, tour (2026-11-23)
+No existing model number changes (all baseline tests are unchanged). New, all clearly labelled as assumptions where they are:
+- **Aftershock** (`hazards/aftershock.py`, `Model.run_aftershock`, `POST /api/aftershock`): a second quake on the damage the first left. The
+  aftershock's shaking is scaled by 1 + 0.6 x (expected damage state / 4) of each building (an assumed weakening), then its damage chances
+  are combined with the earlier ones as 1 - (1 - p1)(1 - p2), which keeps the damage states in order. Totals are cumulative; the response
+  says what the second shock added. Casualties of the second shock are added to the first's (slightly double counts people in the same buildings).
+- **Knock-on failures** (`cascade.py`, `GET /api/cascade/{run}`): fires (ignition chance per heavily damaged or collapsed building, spread 1.2 m/min
+  scaled by local density, stopping at 300 m), gas leaks (12% ignite later), power cuts per 500 m cell (lognormal in PGA, median 0.35 g, plus building
+  damage) and bridge closures (OpenStreetMap bridges, lognormal in PGA, median 0.45 g). All rates are assumptions; results are seeded by the run.
+- **Uncertainty hatching** (`GET /api/confmap/{run}`): squares of the heat grid ranked by the Monte Carlo spread of the chance of heavy damage.
+- **Compare scenarios** (`POST /api/compare`): two earthquakes run on the same area; the scenario on the map is restored afterwards
+  (`Model.snapshot_state` / `restore_state`).
+- **Optimise all teams** (`POST /api/live/optimise`): one assignment of every free unit to every open call (Hungarian method on priority-weighted
+  driving minutes, unserved calls charged 90 min) against the one-by-one nearest-unit baseline. Stations have assumed units (fire 2, ambulance 2, hospital 1,
+  police 2) and a simulated fuel store; `GET /api/live/resources` shows the fleet, fuel and hospital beds against the seriously injured the model expects.
+  Teams drive along their routes on a demo clock (`POST /api/live/speed`, default x10), on the dashboard and on the phone.
+- **Situation report and assistant** (`insights.py`, `POST /api/brief/{run}`, `POST /api/assistant/{run}`): Claude writes from a facts sheet when
+  `ANTHROPIC_API_KEY` is set and the `anthropic` package is installed (model `BRIEF_MODEL`, default `claude-opus-5-5`); otherwise, or if the call fails or is
+  declined, a built-in writer and keyword answerer use the same facts. The facts sheet holds scenario numbers, place and facility names and counts only.
+- **Real earthquake replays** (`presets.py`, `GET /api/presets`): Gorkha 2015, Türkiye 2023 and Bhuj 2001 on the loaded city, Gorkha at its real epicentre, a Himalayan M8 scenario.
+- **Front end** (`ui/command.css`, `ui/command.js`): command-centre theme, KPI strip with count-ups and a citizen-mesh counter, glowing hotspots, pulsing SOS markers,
+  animated route dashes, moving teams, before/after swipe, cinematic 3D tour, sound design, judge mode with a guided tour. Phone page: countdown ring,
+  haptics, sonar SOS button, team driving to the phone with a live countdown. Tests: `tests/test_features.py` (29).
+
 ### Live demo fixes (2026-11-22)
 No model numbers change. A phone that reconnected or reloaded heard the last alert again (each alert now reaches a phone once; ids stay
 unique across restarts). An open SOS now follows its phone when it moves more than 15 m. After a server restart a phone re-sends its open SOS
