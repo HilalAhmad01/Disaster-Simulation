@@ -192,6 +192,14 @@ it); there are no accounts, push notifications or SMS. **It is a demo, not an em
    open space or shelter for earthquakes, or shelter or school for floods and cyclones, with an **Open in Google Maps** link.
 8. **Demo** adds 20 made-up SOS calls where the model expects damage (marked *demo*) and clears them.
 
+### 6.4.2 Simulated drones, phone controller, Kindle
+
+A simulated drone showcase sits on top of the dashboard (`drone/`, `web/drone/`): two drones, a drone console at `/drone`, a phone controller at `/fpv`
+(the phone's camera is the picture, two touch sticks fly the drone), a tablet cockpit at `/pilot`, and a read-only feed for a Kindle dashboard
+(`GET /api/kindle/feed`, `kindle_feed.py`). **One command starts all of it:** `./start_demo.sh --area baseline` (see `tools/start_demo.py --help`).
+The guide, with phone setup, controls, a demo script and fixes, is [docs/integration/DRONE_CONTROLLER_GUIDE.md](docs/integration/DRONE_CONTROLLER_GUIDE.md); the
+design notes are the other files in `docs/integration/`. Set `DRONE_ENABLED=0` to leave the drone module out entirely.
+
 ### 6.5 Tests
 
 ```bash

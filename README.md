@@ -113,17 +113,41 @@ sudo ufw allow 8443/tcp              # once, on Linux with ufw (macOS/Windows: a
 
 If the phone cannot open the link: check it is on the same Wi-Fi, check the firewall, and if it is guest or campus Wi-Fi (which often blocks devices from reaching each other), use the laptop's or a phone's hotspot. If it shows an old page, close the tab and open the link again. The proxy needs the `openssl` command (on Windows, it comes with Git for Windows). Live calls and alerts are kept in memory, so restarting the server clears them; this is a demo, not an emergency service. More in the [detailed README](quake-map/disaster/README.md#641-live-demo-phones-alerts-and-sos).
 
+### Simulated drones, a phone controller and a Kindle (one command)
+
+Two simulated drones fly over the scenario: a **camera drone** you fly yourself and an **auto drone** that surveys by itself. You fly the camera drone from an Android phone: the phone's live camera is the picture, two touch sticks and one button are the controls, and the laptop shows the same flight with the phone's picture as the drone's view. A Kindle can show the simulation numbers and SOS calls as they arrive. Everything about the drones is simulated and labelled so; only the phone's camera picture is real.
+
+```bash
+cd quake-map/disaster
+./start_demo.sh --area baseline
+```
+
+That one command starts the dashboard, runs an earthquake, loads hospitals, fire stations and streets, starts both drones, links a phone (USB with `adb`, or Wi-Fi through the https proxy), starts the Kindle server and, if the Kindle is plugged in, sets it up. It prints the links to open on the phone and a pairing code, and gives you keys for a new code, test SOS calls and a new earthquake. Ctrl+C stops what it started. The first run in a new area downloads its road network (a few minutes, needs internet), so name an area you have already used with `--area`.
+
+- Phone controller: `/fpv` (pair with the 6-digit code from the drone console). Send an SOS: `/sos`. Drone console: `/drone`. Tablet cockpit: `/pilot`.
+- Kindle: the separate [kindle-dash](https://github.com/HilalAhmad01/indle-dash) project (branch `quake-pages`) reads `GET /api/kindle/feed` from this app.
+- Full guide, with the phone setup, the controls, a 5 minute demo script and a fix list: [Drone controller guide](quake-map/disaster/docs/integration/DRONE_CONTROLLER_GUIDE.md).
+
 ### Tests
 
 ```bash
-pytest -q                            # about 200 tests, no network needed
+pytest -q                            # about 340 tests, no network needed (some skip without torch or a browser)
 ```
 
 ---
 
 ## What's new
 
-### Latest update: command centre and a quieter interface
+### Latest update: simulated drones, a phone controller and a Kindle dashboard
+
+- **Simulated drones** with a battery, wind, a reserve for the way home, collision assist and a lidar that builds a SLAM-style point cloud (the believed position drifts like a real estimate; it is not real SLAM). They survey buildings, spot people and feed what they saw back into the damage picture. Drone console at `/drone`.
+- **Phone controller** at `/fpv`: the live phone camera as the picture, two sticks, one button, and a switch between the camera drone and the auto drone. The laptop shows the phone's picture as the drone's view.
+- **Kindle dashboard**: `GET /api/kindle/feed` feeds the kindle-dash project, which shows the latest run and the SOS calls, and switches page by itself when a new call arrives.
+- **One command** to start all of it: `./start_demo.sh --area baseline` (see above).
+- Fixes along the way: only one airborne drone's updates reached the browser, the fleet list swallowed clicks, and the 3D view was shaky.
+- Tests: about 340 (9 skipped when torch or a browser is missing).
+
+### Previous update: command centre and a quieter interface
 
 - **Guided tour** (topbar): a pre-flight checklist and a nine-step walk-through: replay a real earthquake, watch the damage land, fly through the city in 3D, check responder access, bring phones into the mesh, optimise all teams, run knock-on failures and an aftershock, compare scenarios, read the AI report.
 - **Optimise all teams**: assigns every free unit to every open call at once and shows the saving against answering calls one by one. Teams drive on a demo clock (x1 to x60) on the map and on the phone.
@@ -218,6 +242,7 @@ quake-map/disaster/
 
 ## Documentation
 
+- [Drone controller guide](quake-map/disaster/docs/integration/DRONE_CONTROLLER_GUIDE.md): the simulated drones, the phone controller, the Kindle and the one-command start
 - [Detailed README](quake-map/disaster/README.md): methods, every placeholder, settings, API, troubleshooting
 - [CHANGELOG](quake-map/disaster/CHANGELOG.md): every change and its effect on the numbers
 - [Validation](quake-map/disaster/docs/validation.md), [calibration](quake-map/disaster/docs/calibration/README.md), [roads and debris](quake-map/disaster/docs/roads.md), [data sources](quake-map/disaster/docs/data_sources.md)
