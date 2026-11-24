@@ -1,5 +1,14 @@
 # Disaster Simulation: Quake Damage Map
 
+## Start everything with one command
+
+```bash
+cd quake-map/disaster
+./start_demo.sh
+```
+
+This starts every service for the demo: the dashboard, an earthquake scenario, the simulated drones, the phone links (USB and Wi-Fi) and the Kindle server. It prints the links to open on the phone and a pairing code. Press **Ctrl+C** (or `q`) to stop what it started. Linux only. It expects the [Setup](#setup) below to be done once (Python environment and `pip install -r requirements.txt`) and an area to be loaded. To use a saved area by name: `./start_demo.sh --area <name>`. All options: `./start_demo.sh --help`. The phone, Kindle and drone steps are in the [Drone controller guide](quake-map/disaster/docs/integration/DRONE_CONTROLLER_GUIDE.md).
+
 A city-scale disaster damage estimator that runs in your browser. Describe a scenario (an **earthquake**, a **cyclone** or a **flood**) and an interactive map shows how hard each part of the city is hit, which buildings are likely damaged, how many people are at risk, which neighbourhoods need responders first, and how responders could reach them. You can zoom from the whole city down to individual buildings, in 2D or 3D.
 
 A live demo mode adds the other side of a disaster: people's **phones get alerts, send an SOS with one tap and are routed to the nearest safe place**, and a **Dispatch** panel shows the calls on the damage map, ranks them and sends the nearest working rescue team.
