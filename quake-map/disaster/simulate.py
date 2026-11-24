@@ -167,6 +167,30 @@ class Model:
         return self.run_hazard(EarthquakeHazard(), dict(lat=lat, lon=lon, depth_km=depth_km, mag=mag, time_of_day=time_of_day,
                                                         strike=strike, dip=dip, rake=rake, pga_override=pga_override))
 
+    def aggregate_cells(self, hazard, org, ds, cat, risk, p, value):
+        """The 500 m priority cells (ranked by people at risk) and the fine heat grid, from per-building results. Shared by run_hazard and
+        by the drone-updated view (drone/feedback.py), which calls it with probabilities changed by observations."""
+        key = (self.x // 500).astype(int) * 100000 + (self.y // 500).astype(int)
+        meas = (self.g["levels_src"].isin(["label", "label_height", "google", "google_over_label"]).to_numpy() if "levels_src" in self.g else np.zeros(len(self.g), bool))
+        df = pd.DataFrame({"key": key, "lat": self.lat, "lon": self.lon, "ds": ds, "risk": risk,
+                           "heavy": cat >= 2, "severe": cat == 3, "collapse": p[:, 3], "pga": value, "measured": meas})
+        c = df.groupby("key").agg(lat=("lat", "mean"), lon=("lon", "mean"), n=("ds", "size"),
+                                  heavy=("heavy", "sum"), severe=("severe", "sum"), risk=("risk", "sum"),
+                                  collapse=("collapse", "sum"), mean_ds=("ds", "mean"), pga=("pga", "mean"), measured=("measured", "mean"))
+        c["dist_km"] = haversine(org[0], org[1], c.lat.to_numpy(), c.lon.to_numpy()) if org else np.nan
+        c = c.sort_values("risk", ascending=False)
+        c["rank"] = 0
+        c.iloc[:8, c.columns.get_loc("rank")] = np.arange(1, min(8, len(c)) + 1)
+        feats = [{"type": "Feature",
+                  "geometry": {"type": "Point", "coordinates": [r.lon, r.lat]},
+                  "properties": {"n": int(r.n), "heavy": int(r.heavy), "severe": int(r.severe),
+                                 "risk": int(round(r.risk)), "collapse": round(float(r.collapse), 1),
+                                 "mean_ds": round(float(r.mean_ds), 2), hazard.cell_key: round(float(r.pga), 3),
+                                 "dist_km": round(float(r.dist_km), 1) if org else None, "rank": int(r.rank), "measured": round(float(r.measured), 2)}}
+                 for r in c.itertuples()]
+        heat = self._heat_grid(p[:, 2], risk)
+        return feats, heat
+
     def run_hazard(self, hazard, params):
         """One scenario of any hazard (MASTER_PLAN 7.1): the hazard supplies intensity and damage probabilities, everything else
         (people, aggregation, priority cells, casualties where the hazard has them) is shared."""
@@ -191,27 +215,10 @@ class Model:
         for i, k in enumerate(["p_slight", "p_moderate", "p_extensive", "p_collapse"]):
             g[k] = p[:, i].round(3)
 
-        key = (self.x // 500).astype(int) * 100000 + (self.y // 500).astype(int)
-        meas = (self.g["levels_src"].isin(["label", "label_height", "google", "google_over_label"]).to_numpy() if "levels_src" in self.g else np.zeros(len(self.g), bool))
-        df = pd.DataFrame({"key": key, "lat": self.lat, "lon": self.lon, "ds": ds, "risk": risk,
-                           "heavy": cat >= 2, "severe": cat == 3, "collapse": p[:, 3], "pga": value, "measured": meas})
-        c = df.groupby("key").agg(lat=("lat", "mean"), lon=("lon", "mean"), n=("ds", "size"),
-                                  heavy=("heavy", "sum"), severe=("severe", "sum"), risk=("risk", "sum"),
-                                  collapse=("collapse", "sum"), mean_ds=("ds", "mean"), pga=("pga", "mean"), measured=("measured", "mean"))
         org = hazard.origin(params)
-        c["dist_km"] = haversine(org[0], org[1], c.lat.to_numpy(), c.lon.to_numpy()) if org else np.nan
-        c = c.sort_values("risk", ascending=False)
-        c["rank"] = 0
-        c.iloc[:8, c.columns.get_loc("rank")] = np.arange(1, min(8, len(c)) + 1)
-        feats = [{"type": "Feature",
-                  "geometry": {"type": "Point", "coordinates": [r.lon, r.lat]},
-                  "properties": {"n": int(r.n), "heavy": int(r.heavy), "severe": int(r.severe),
-                                 "risk": int(round(r.risk)), "collapse": round(float(r.collapse), 1),
-                                 "mean_ds": round(float(r.mean_ds), 2), hazard.cell_key: round(float(r.pga), 3),
-                                 "dist_km": round(float(r.dist_km), 1) if org else None, "rank": int(r.rank), "measured": round(float(r.measured), 2)}}
-                 for r in c.itertuples()]
-        heat = self._heat_grid(p[:, 2], risk)
+        feats, heat = self.aggregate_cells(hazard, org, ds, cat, risk, p, value)
         self.last, self.run_id, self.cells = g, next(_RUNS), feats
+        self.p_last, self.value_last = p, value                  # full-precision damage probabilities and intensity (the table above is rounded); the drone-updated view starts from these
         self.hazard = hazard.name
         self.scenario = {"hazard": hazard.name, "time_of_day": time_of_day, **{k: v for k, v in params.items() if k != "pga_override" and (np.isscalar(v) or v is None)}}
         summary = {"buildings": len(g), "severe": int((cat == 3).sum()), "heavy": int((cat >= 2).sum()), "expected_heavy": int(round(p[:, 2].sum())),
@@ -222,7 +229,7 @@ class Model:
         return out
 
     # attributes a scenario run replaces; saved and restored around side runs (scenario comparison) so the page's run stays the model's run
-    _RUN_STATE = ("haz", "last", "run_id", "cells", "hazard", "scenario", "summary", "mc")
+    _RUN_STATE = ("haz", "last", "run_id", "cells", "hazard", "scenario", "summary", "mc", "p_last", "value_last")
 
     def snapshot_state(self):
         return {k: self.__dict__[k] for k in self._RUN_STATE if k in self.__dict__}

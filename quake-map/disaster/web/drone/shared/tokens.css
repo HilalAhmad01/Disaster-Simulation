@@ -1,0 +1,17 @@
+/* Design tokens. These mirror the :root blocks in index.html on purpose (same values), so the drone page reads as part of the same app.
+   4px grid; graphite neutrals; no chrome accent: colour is reserved for data and status. */
+:root{
+  --bg:#fafafa;--side:#fafafa;--surface:#fff;--raised:#f4f4f5;--hover:#ececee;
+  --line:rgba(23,23,23,.08);--line-2:rgba(23,23,23,.16);
+  --ink:#171717;--ink-hover:#2e2e2e;--text2:#525252;--muted:#737373;
+  --red:#d7263d;--yel:#f2b705;--grn:#3aa655;--blu:#3b7dd8;--neg:#dc2626;--pos:#16a34a;
+  --sans:'IBM Plex Sans',system-ui,sans-serif;--mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --ease:cubic-bezier(.22,1,.36,1);
+  --chev:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%23737373' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
+  color-scheme:light}
+:root[data-theme=dark]{
+  --bg:#141415;--side:#0f0f10;--surface:#19191b;--raised:#232325;--hover:#2c2c2f;
+  --line:rgba(237,237,237,.08);--line-2:rgba(237,237,237,.16);
+  --ink:#ededed;--ink-hover:#fff;--text2:#a1a1a6;--muted:#85858b;--neg:#e5484d;--pos:#4cc38a;
+  --chev:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%2385858b' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
+  color-scheme:dark}

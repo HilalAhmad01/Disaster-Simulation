@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Drone console · Disaster Simulation</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='3' y='3' width='10' height='10' transform='rotate(45 8 8)' fill='%23d7263d'/%3E%3C/svg%3E">
+<script>(function(){let t='light';try{t=localStorage.getItem('quake-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch(e){}document.documentElement.dataset.theme=t})()</script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/drone-static/shared/tokens.css">
+<link rel="stylesheet" href="/drone-static/page/page.css">
+</head>
+<body>
+<header id="top">
+  <a id="back" class="btn alt sq" href="/" aria-label="Back to the dashboard" title="Back to the dashboard"></a>
+  <span class="brand">Disaster Simulation</span>
+  <span class="crumb"><span class="sep" aria-hidden="true">/</span><span>Drone console</span><span class="tag" title="No real drone exists. Everything on this page is simulated.">Simulated</span></span>
+  <span class="ctx" id="ctx"></span>
+  <span class="grow"></span>
+  <span class="glance" id="glance" aria-live="polite"></span>
+  <div id="tbAct">
+    <span class="clock mono" id="clock" title="Simulated time since the quake">T+00:00:00</span>
+    <span class="muted" style="font-size:12px">Speed</span><div class="seg" id="speed" role="group" aria-label="Simulation speed" title="How fast simulated time runs"></div>
+    <button class="btn alt" id="pause" type="button">Pause</button>
+    <label class="switch" title="On: the auto drone chooses its own surveys. Off: nothing flies until you press a button"><input type="checkbox" id="auto"><span>Autopilot</span></label>
+    <button class="btn alt" id="pairBtn" type="button">Pair a phone</button>
+    <button class="btn alt sq" id="moreBtn" type="button" aria-label="More" aria-haspopup="menu" title="Export, replay, scenario"></button>
+    <button class="btn alt sq" id="themeBtn" type="button" aria-label="Switch light and dark" title="Light or dark"></button>
+  </div>
+</header>
+
+<div id="app">
+  <aside id="left" aria-label="Fleet">
+    <div class="rail-h"><h1>Fleet</h1><span class="muted" id="fleetCount"></span></div>
+        <ul class="fleet" id="fleet"></ul>
+    <details class="layers"><summary>Map layers</summary><div id="layerList"></div></details>
+  </aside>
+
+  <main id="center">
+    <section id="mapSec" aria-label="Map">
+      <div id="map"></div>
+      <div class="mtool" role="toolbar" aria-label="Send a drone">
+        <button type="button" class="tool" data-tool="inspect" title="Inspect a building"></button>
+        <button type="button" class="tool" data-tool="area" title="Survey an area"></button>
+        <button type="button" class="tool" data-tool="goto" title="Fly to a point"></button>
+        <button type="button" class="tool" data-tool="ban" title="Exclude a zone from the queue"></button>
+      </div>
+      <div class="toolhint" id="toolHint" hidden></div>
+      <div class="toast" id="toast" role="status" hidden></div>
+    </section>
+    <section id="live" aria-label="Live view"></section>
+  </main>
+
+  <aside id="right" aria-label="Queue, sightings and model">
+    <div class="tabs" role="tablist" id="tabs"></div>
+    <div class="tab-body" id="tabBody"></div>
+  </aside>
+</div>
+
+<div class="gate" id="gate" hidden><div><h1 id="gateTitle"></h1><p id="gateMsg"></p><a class="btn primary" href="/">Back to the dashboard</a></div></div>
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>window.maplibregl||document.write('<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"><\/script>')</script>
+<script type="module" src="/drone-static/page/page.js"></script>
+</body></html>

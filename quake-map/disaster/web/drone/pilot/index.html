@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0f0f10">
+<title>Drone pilot (simulated)</title>
+<link rel="stylesheet" href="/drone-static/pilot/pilot.css">
+</head>
+<body>
+<main id="pair" hidden>
+  <section class="pair-card" aria-labelledby="pairTitle">
+    <h1 id="pairTitle">Pair this tablet</h1>
+    <p class="muted">Ask the commander to press Pair a tablet in the Drone page, then enter the 6-digit code.</p>
+    <div class="code" id="codeBoxes" aria-live="polite"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="keypad" id="keypad" role="group" aria-label="Pairing code keypad"></div>
+    <label class="field"><span>Device name</span><input id="devName" value="Tablet" maxlength="30" autocomplete="off"></label>
+    <p class="err" id="pairErr" role="alert" hidden></p>
+    <button class="btn primary" id="pairGo" disabled>Pair</button>
+  </section>
+</main>
+
+<main id="cockpit" hidden>
+  <canvas id="view" aria-label="Live drone view (simulated)"></canvas>
+
+  <header class="bar">
+    <button class="pill" id="droneBtn" aria-haspopup="listbox" aria-expanded="false"><span class="dot" id="stDot"></span><b id="dName">No drone</b><span id="dState" class="muted"></span></button>
+    <div class="grow"></div>
+    <span class="mono" id="clock">T+00:00:00</span>
+    <span class="sim" title="No real drone exists. Everything is simulated.">Simulated</span>
+    <span class="mono" id="link" title="Round trip to the server">link –</span>
+    <button class="icon" id="fsBtn" aria-label="Full screen"></button>
+  </header>
+
+  <aside class="stats" aria-label="Flight data">
+    <div class="bat"><i id="batBar"></i><u id="batRes"></u></div>
+    <div class="row"><span id="batPct" class="big mono">–</span><span class="muted" id="batMin"></span></div>
+    <dl>
+      <div><dt>Altitude</dt><dd id="vAlt" class="mono">–</dd></div>
+      <div><dt>Speed</dt><dd id="vSpd" class="mono">–</dd></div>
+      <div><dt>Home</dt><dd id="vHome" class="mono">–</dd></div>
+      <div><dt>Lease</dt><dd id="vLease">–</dd></div>
+    </dl>
+  </aside>
+
+  <section class="tasks" id="tasks" aria-label="Next tasks"></section>
+
+  <aside class="map" id="mapBox" aria-label="Tactical map">
+    <canvas id="tmap" width="440" height="440"></canvas>
+    <div class="mapctl"><button class="icon sm" id="zIn" aria-label="Zoom in"></button><button class="icon sm" id="zOut" aria-label="Zoom out"></button></div>
+  </aside>
+
+  <div class="banner" id="banner" role="alert" hidden></div>
+  <div class="sheet" id="sheet" hidden></div>
+
+  <div class="stick left" id="stickL" role="application" aria-label="Move stick: forward, back, sideways"><i></i></div>
+  <div class="stick right" id="stickR" role="application" aria-label="Height and turn stick"><i></i></div>
+
+  <nav class="dock" aria-label="Controls">
+    <div class="seg" id="views" role="group" aria-label="View"><button data-v="chase" aria-pressed="true">Chase</button><button data-v="fpv" aria-pressed="false">Front</button><button data-v="top" aria-pressed="false">Top</button><button data-v="slam" aria-pressed="false">Map</button></div>
+    <div class="acts">
+      <button class="btn primary" id="takeBtn">Take control</button>
+      <button class="btn" id="holdBtn">Hold</button>
+      <button class="btn danger hold" id="rthBtn"><span>Return</span><i></i></button>
+      <button class="btn" id="assistBtn" aria-pressed="true">Assist on</button>
+      <button class="btn" id="launchBtn" hidden>Launch</button>
+    </div>
+  </nav>
+
+  <div class="menu" id="menu" role="listbox" hidden></div>
+  <div class="menu release" id="relMenu" hidden><button data-then="auto">Resume the task</button><button data-then="hold">Hold here</button><button data-then="rth">Return home</button></div>
+  <div class="overlay" id="gate" hidden><p id="gateMsg"></p><button class="btn primary" id="gateBtn">Retry</button></div>
+</main>
+<script type="module" src="/drone-static/pilot/pilot.js"></script>
+</body>
+</html>

@@ -83,8 +83,22 @@ class Layer:
         L = self.model.last
         h = L["levels"].to_numpy(float) * R.STOREY_M
         import simulate as S
-        return R.blockage(self.net, self._building_geoms_utm(), h, L["p_collapse"].to_numpy(float), L["p_extensive"].to_numpy(float),
-                          p_masonry=self.model.W[:, S.TYPES.index("URM")], pairs=self.match_streets())
+        p = R.blockage(self.net, self._building_geoms_utm(), h, L["p_collapse"].to_numpy(float), L["p_extensive"].to_numpy(float),
+                       p_masonry=self.model.W[:, S.TYPES.index("URM")], pairs=self.match_streets())
+        ov = getattr(self, "_edge_override", None)
+        if ov:                                              # streets a drone has looked at: seen blocked (near certain) or seen clear (zero)
+            p = np.array(p, float)
+            p[np.fromiter(ov.keys(), int, len(ov))] = np.array([0.999 if b else 0.0 for b in ov.values()])
+        return p
+
+    def set_edge_override(self, edges):
+        """Street edges observed from the air ({edge index: blocked}). Routes, hospital access and dispatch all read blockage(), so they
+        change at once; cached results are dropped. Cleared by a new simulation run (the override belongs to the run it was seen in)."""
+        if getattr(self, "_edge_override_run", None) != self.model.run_id:
+            self._edge_override, self._edge_override_run = {}, self.model.run_id
+        self._edge_override.update({int(k): bool(v) for k, v in edges.items()})
+        self.access.clear()
+        self._live_pedge = None
 
     def working_hospitals(self, state=None):
         s = state if state is not None else self.facility_state()

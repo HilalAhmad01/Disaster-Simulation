@@ -1297,4 +1297,6 @@ async function lvQR(){
   $('lUrl').addEventListener('change',()=>{try{localStorage.setItem('quake-phone-url',$('lUrl').value)}catch(e){}lvQR()});
 })();
 </script>
-<script src="/ui/command.js"></script></body></html>
+<script src="/ui/command.js"></script>
+<script>/* simulated drone console: a button and two contextual actions; loads only when the server says the module is enabled */
+fetch('/api/drone/config').then(r=>r.ok?r.json():null).then(c=>{if(c&&c.enabled)import('/drone-static/dashboard/main-hooks.js').catch(e=>console.warn('drone hooks',e))}).catch(()=>{})</script></body></html>

@@ -676,6 +676,17 @@ def create_app(data_dir=None):
             return None
     live.attach(app, st, layer_or_none)
 
+    import kindle_feed                                         # a compact read-only feed for the Kindle dashboard (a separate project polls it)
+    kindle_feed.attach(app, st)
+
+    # ---- simulated drone showcase (drone/): optional; DRONE_ENABLED=0 leaves the app exactly as before ----
+    if os.environ.get("DRONE_ENABLED", "1").strip().lower() not in ("0", "false", "no", "off"):
+        try:
+            from drone import bridge as drone_bridge
+            drone_bridge.attach(app, st, layer_or_none)
+        except Exception as ex:                       # the drone module must never stop the dashboard from starting
+            print(f"Drone module not loaded: {ex}")
+
     return app
 
 app = create_app()

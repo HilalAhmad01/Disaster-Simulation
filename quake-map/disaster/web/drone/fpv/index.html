@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Drone camera view (simulated)</title>
+<link rel="stylesheet" href="/drone-static/fpv/fpv.css">
+</head>
+<body>
+<main id="pair" hidden>
+  <form class="pair-card" id="pairForm" autocomplete="off">
+    <h1>Connect to a drone</h1>
+    <p class="muted">Press Pair a tablet on the Drone page and type the 6-digit code here.</p>
+    <input id="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000" aria-label="Pairing code">
+    <p class="err" id="pairErr" role="alert" hidden></p>
+    <button class="btn" id="pairGo" disabled>Connect</button>
+  </form>
+</main>
+
+<main id="fly" hidden>
+  <video id="cam" playsinline muted autoplay></video>
+  <div class="vignette"></div>
+  <div class="frame" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <div class="reticle" id="reticle" aria-hidden="true"></div>
+  <div class="horizon" id="horizon" aria-hidden="true"></div>
+
+  <header class="top">
+    <span class="rec" title="The picture is sent live to the laptop's Drone page. Nothing is stored."><i></i>Live</span>
+    <div class="pick" id="pick" role="group" aria-label="Which drone"></div>
+    <span class="grow"></span>
+    <span class="mono" id="hud">–</span>
+    <span class="sim" title="No real drone exists. The flight is simulated.">Simulated</span>
+    <button class="icon" id="flip" aria-label="Switch camera"></button>
+  </header>
+
+  <div class="msg" id="msg" role="status" hidden></div>
+  <button class="go" id="go" disabled>Take off</button>
+
+  <div class="stick left" id="stickL" role="application" aria-label="Move stick"><i></i></div>
+  <div class="stick right" id="stickR" role="application" aria-label="Height and turn stick"><i></i></div>
+</main>
+<script type="module" src="/drone-static/fpv/fpv.js"></script>
+</body>
+</html>

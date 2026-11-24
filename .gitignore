@@ -12,3 +12,6 @@ venv/
 .tools/
 # road and facility download cache (osmnx/Overpass); re-downloaded when needed
 quake-map/disaster/cache/
+
+# written by tools/spikes/spike_e_server.py from a real phone or tablet run
+quake-map/disaster/tools/spikes/spike_e_report_*.json

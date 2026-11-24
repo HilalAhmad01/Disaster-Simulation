@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Drone spike E: tablet check</title>
+<style>
+  :root{color-scheme:dark}
+  body{margin:0;padding:12px;font:15px/1.4 system-ui,sans-serif;background:#10161d;color:#dfe7ee}
+  h1{font-size:18px;margin:0 0 4px} h2{font-size:15px;margin:18px 0 6px;color:#8fd0ff}
+  button{font:inherit;padding:14px 18px;border-radius:10px;border:0;background:#2b7fff;color:#fff;margin:4px 6px 4px 0;min-width:120px}
+  button.alt{background:#34424f}
+  table{border-collapse:collapse;width:100%} td{padding:3px 8px;border-bottom:1px solid #26323d;vertical-align:top}
+  td:first-child{color:#9fb0bf;width:42%} .ok{color:#6be08b} .bad{color:#ff7a7a} .warn{color:#ffd166}
+  #pad{display:flex;gap:12px;height:170px;touch-action:none;user-select:none;-webkit-user-select:none}
+  .stick{flex:1;border:2px dashed #46596b;border-radius:14px;display:flex;align-items:center;justify-content:center;color:#6f8396;position:relative;touch-action:none}
+  .dot{position:absolute;width:46px;height:46px;border-radius:50%;background:#2b7fff99;border:2px solid #8fd0ff;pointer-events:none;display:none}
+  canvas{width:100%;max-width:640px;height:auto;background:#000;border-radius:8px;display:block;touch-action:none}
+  pre{background:#0a0f14;padding:8px;border-radius:8px;overflow:auto;max-height:220px;font-size:12px}
+</style></head><body>
+<h1>Drone spike E: tablet check <small id="ver" style="color:#6f8396"></small></h1>
+<div>Open this on the Android tablet in Chrome. Press <b>Run all</b>, then use both thumbs on the two pads below, then <b>Send report</b>.</div>
+<p><button id="runAll">Run all</button><button class="alt" id="sendBtn">Send report</button></p>
+
+<h2>1. Browser features</h2><table id="feat"></table>
+<h2>2. Two-thumb touch (hold both pads at once, drag, swipe near the screen edge)</h2>
+<div id="pad"><div class="stick" id="s1">left stick<div class="dot"></div></div><div class="stick" id="s2">right stick<div class="dot"></div></div></div>
+<table id="touch"></table>
+<h2>3. Link round trip (websocket, 20 messages per second for 15 s)</h2><table id="rtt"></table>
+<h2>4. Rendering (three.js, 800 instanced boxes, flat colours)</h2>
+<canvas id="cv" width="640" height="360"></canvas><table id="fps"></table>
+<h2>Report</h2><pre id="out">nothing yet</pre>
+
+<script type="module">
+const $ = id => document.getElementById(id);
+const R = { when: new Date().toISOString(), page: location.href, features: {}, touch: {}, rtt: {}, fps: {} };
+const row = (tbl, k, v, cls = '') => { const t = $(tbl); let tr = t.querySelector(`[data-k="${k}"]`); if (!tr) { tr = document.createElement('tr'); tr.dataset.k = k; tr.innerHTML = '<td></td><td></td>'; t.appendChild(tr); } tr.children[0].textContent = k; tr.children[1].textContent = v; tr.children[1].className = cls; };
+const pct = (a, p) => { if (!a.length) return NaN; const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const flag = (tbl, store, k, ok, detail = '') => { store[k] = { ok: !!ok, detail }; row(tbl, k, (ok ? 'yes' : 'NO') + (detail ? '  ' + detail : ''), ok ? 'ok' : 'bad'); };
+
+// ---------------------------------------------------------------- 1. features
+async function features() {
+  const F = R.features, nav = navigator;
+  row('feat', 'user agent', nav.userAgent); F.userAgent = nav.userAgent;
+  row('feat', 'screen / dpr', `${screen.width}x${screen.height} css px, dpr ${devicePixelRatio}`); F.screen = [screen.width, screen.height, devicePixelRatio];
+  row('feat', 'cpu cores / memory', `${nav.hardwareConcurrency} / ${nav.deviceMemory ?? '?'} GB`); F.cores = nav.hardwareConcurrency; F.memGB = nav.deviceMemory ?? null;
+  flag('feat', F, 'secure context', window.isSecureContext, location.protocol + '//' + location.host);
+  const gl = document.createElement('canvas').getContext('webgl2');
+  flag('feat', F, 'WebGL2', !!gl, gl ? (gl.getParameter(gl.RENDERER) || '') : '');
+  flag('feat', F, 'pointer events', 'PointerEvent' in window, `maxTouchPoints ${nav.maxTouchPoints}`);
+  flag('feat', F, 'multi-touch (>=2 points)', nav.maxTouchPoints >= 2);
+  flag('feat', F, 'fullscreen API', !!document.documentElement.requestFullscreen);
+  flag('feat', F, 'screen wake lock API', 'wakeLock' in nav);
+  flag('feat', F, 'vibrate', 'vibrate' in nav);
+  flag('feat', F, 'orientation lock API', !!(screen.orientation && screen.orientation.lock));
+  flag('feat', F, 'gamepad API', 'getGamepads' in nav, 'optional');
+  flag('feat', F, 'WebSocket', 'WebSocket' in window);
+  flag('feat', F, 'service worker API', 'serviceWorker' in nav, 'not needed; informational');
+}
+async function gestureTests() {            // must start from the button click (user activation)
+  const F = R.features;
+  try { await document.documentElement.requestFullscreen(); flag('feat', F, 'fullscreen works', true); await sleep(400); await document.exitFullscreen(); } catch (e) { flag('feat', F, 'fullscreen works', false, String(e)); }
+  try { const l = await navigator.wakeLock.request('screen'); flag('feat', F, 'wake lock works', true); await l.release(); } catch (e) { flag('feat', F, 'wake lock works', false, String(e)); }
+  try { const ok = navigator.vibrate && navigator.vibrate([60, 40, 60]); flag('feat', F, 'vibrate works', !!ok, 'feel for it'); } catch (e) { flag('feat', F, 'vibrate works', false, String(e)); }
+  try { await document.documentElement.requestFullscreen(); await screen.orientation.lock('landscape'); flag('feat', F, 'landscape lock works', true); screen.orientation.unlock(); await document.exitFullscreen(); } catch (e) { flag('feat', F, 'landscape lock works', false, String(e)); try { await document.exitFullscreen(); } catch (_) {} }
+}
+
+// ---------------------------------------------------------------- 2. touch
+const T = R.touch; T.maxSimultaneous = 0; T.cancelled = 0; T.moves = 0; T.leftStickMax = 0; T.bothSticksMax = 0;
+{
+  const active = new Map();
+  for (const id of ['s1', 's2']) {
+    const el = $(id), dot = el.querySelector('.dot');
+    el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); active.set(e.pointerId, id); dot.style.display = 'block'; move(e, el, dot); upd(); });
+    el.addEventListener('pointermove', e => { if (active.get(e.pointerId) === id) { move(e, el, dot); T.moves++; } });
+    const up = e => { if (active.delete(e.pointerId)) { if (![...active.values()].includes(id)) dot.style.display = 'none'; upd(); } };
+    el.addEventListener('pointerup', up); el.addEventListener('pointercancel', e => { T.cancelled++; up(e); });
+  }
+  const move = (e, el, dot) => { const r = el.getBoundingClientRect(); dot.style.left = (e.clientX - r.left - 23) + 'px'; dot.style.top = (e.clientY - r.top - 23) + 'px'; };
+  const upd = () => { const n = active.size; T.maxSimultaneous = Math.max(T.maxSimultaneous, n); const both = new Set(active.values()).size === 2; if (both) T.bothSticksMax = Math.max(T.bothSticksMax, n);
+    row('touch', 'pointers now / max', `${n} / ${T.maxSimultaneous}`); row('touch', 'both pads held together', T.bothSticksMax >= 2 ? 'yes' : 'not yet', T.bothSticksMax >= 2 ? 'ok' : 'warn');
+    row('touch', 'pointercancel events (system gestures)', String(T.cancelled), T.cancelled ? 'warn' : 'ok'); };
+  upd();
+}
+
+// ---------------------------------------------------------------- 3. websocket round trip
+async function rtt() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const out = R.rtt = { sent: 0, got: 0 }; const lat = [];
+  await new Promise(res => {
+    const ws = new WebSocket(`${proto}://${location.host}/ws/echo`);
+    ws.onerror = () => { row('rtt', 'connection', 'FAILED', 'bad'); out.error = true; res(); };
+    ws.onopen = () => {
+      row('rtt', 'connection', `open (${proto})`, 'ok'); let i = 0; const t0 = performance.now();
+      const tm = setInterval(() => { if (performance.now() - t0 > 15000) { clearInterval(tm); setTimeout(() => { ws.close(); res(); }, 600); return; }
+        ws.send(JSON.stringify({ i, t: performance.now() })); out.sent = ++i; }, 50);
+    };
+    ws.onmessage = e => { const m = JSON.parse(e.data); lat.push(performance.now() - m.t); out.got++;
+      if (lat.length % 20 === 0) row('rtt', 'messages / median ms', `${out.got}/${out.sent}  ${pct(lat, .5).toFixed(1)} ms`); };
+  });
+  if (lat.length) { Object.assign(out, { p50: pct(lat, .5), p95: pct(lat, .95), p99: pct(lat, .99), max: Math.max(...lat), loss: 1 - out.got / out.sent });
+    const good = out.p95 < 60 && out.loss < 0.01;
+    row('rtt', 'median / p95 / p99 / max (ms)', [out.p50, out.p95, out.p99, out.max].map(v => v.toFixed(1)).join(' / '), good ? 'ok' : 'warn');
+    row('rtt', 'loss', (out.loss * 100).toFixed(2) + ' %', out.loss < .01 ? 'ok' : 'warn');
+    row('rtt', 'target', 'p95 round trip under 60 ms keeps input-to-drone under 100 ms'); }
+}
+
+// ---------------------------------------------------------------- 4. three.js frame rate
+async function fps() {
+  let THREE; try { THREE = await import('/vendor/three.module.js'); } catch (e) { row('fps', 'three.js', 'could not load: ' + e, 'bad'); return; }
+  const cv = $('cv'); const out = R.fps = { three: THREE.REVISION };
+  async function run(label, dpr, ms) {
+    const r = new THREE.WebGLRenderer({ canvas: cv, antialias: false, powerPreference: 'high-performance' }); r.setPixelRatio(dpr); r.setSize(640, 360, false);
+    const sc = new THREE.Scene(); sc.background = new THREE.Color(0x0b1218);
+    const cam = new THREE.PerspectiveCamera(60, 16 / 9, 0.5, 600);
+    const N = 800, geo = new THREE.BoxGeometry(1, 1, 1), mat = new THREE.MeshBasicMaterial({ color: 0xffffff }), im = new THREE.InstancedMesh(geo, mat, N);
+    const m = new THREE.Matrix4(), c = new THREE.Color(); let s = 1;
+    for (let i = 0; i < N; i++) { s = (s * 16807) % 2147483647; const a = s / 2147483647; s = (s * 16807) % 2147483647; const b = s / 2147483647;
+      const h = 3 + a * 15; m.compose(new THREE.Vector3((a - .5) * 500, h / 2, (b - .5) * 500), new THREE.Quaternion(), new THREE.Vector3(8 + b * 14, h, 8 + a * 14)); im.setMatrixAt(i, m);
+      im.setColorAt(i, c.setHSL(0.55 + a * 0.1, 0.25, 0.35 + b * 0.25)); }
+    sc.add(im);
+    const pos = new Float32Array(3 * 20000);                 // a 20k-point cloud, like a growing lidar map
+    for (let i = 0; i < pos.length; i++) pos[i] = (i % 3 === 1) ? Math.random() * 6 : (Math.random() - .5) * 400;
+    const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    sc.add(new THREE.Points(pg, new THREE.PointsMaterial({ size: 1.2, color: 0x66ccff })));
+    const frames = []; let last = performance.now(); const t0 = last; let k = 0;
+    await new Promise(res => { const f = t => { frames.push(t - last); last = t; k += .004; cam.position.set(Math.cos(k) * 150, 40, Math.sin(k) * 150); cam.lookAt(0, 5, 0); r.render(sc, cam);
+      if (t - t0 < ms) requestAnimationFrame(f); else res(); }; requestAnimationFrame(f); });
+    frames.shift(); const avg = 1000 / (frames.reduce((x, y) => x + y, 0) / frames.length);
+    out[label] = { fps: avg, p95_ms: pct(frames, .95), frames: frames.length };
+    row('fps', label, `${avg.toFixed(1)} fps, p95 frame ${pct(frames, .95).toFixed(1)} ms`, avg >= 28 ? 'ok' : avg >= 20 ? 'warn' : 'bad');
+    r.dispose(); geo.dispose(); mat.dispose();
+  }
+  row('fps', 'three.js', 'r' + THREE.REVISION);
+  await run('pixel ratio 1 (plan default)', 1, 8000);
+  await run(`pixel ratio ${devicePixelRatio} (native)`, devicePixelRatio, 6000);
+  row('fps', 'target', 'at least 20 fps at pixel ratio 1 (30 is comfortable)');
+}
+
+// ---------------------------------------------------------------- driver
+async function runAll() {
+  $('runAll').disabled = true;
+  await gestureTests();
+  await features();
+  await rtt();
+  await fps();
+  $('runAll').disabled = false;
+  summarize();
+}
+function summarize() {
+  const F = R.features; R.summary = { secure: F['secure context']?.ok, webgl2: F['WebGL2']?.ok, multiTouch: F['multi-touch (>=2 points)']?.ok, fullscreen: F['fullscreen works']?.ok, wakeLock: F['wake lock works']?.ok,
+    landscapeLock: F['landscape lock works']?.ok, vibrate: F['vibrate works']?.ok, bothPadsHeld: R.touch.bothSticksMax >= 2, pointercancel: R.touch.cancelled, rttP95: R.rtt.p95, rttMax: R.rtt.max, loss: R.rtt.loss,
+    fpsDpr1: R.fps['pixel ratio 1 (plan default)']?.fps, fpsNative: R.fps[`pixel ratio ${devicePixelRatio} (native)`]?.fps, ua: navigator.userAgent, screen: F.screen };
+  $('out').textContent = JSON.stringify(R.summary, null, 1);
+}
+$('runAll').onclick = runAll;
+$('sendBtn').onclick = async () => { summarize(); try { const r = await fetch('/api/report', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(R) }); $('out').textContent += '\n\nsent: ' + JSON.stringify(await r.json()); } catch (e) { $('out').textContent += '\n\nsend failed: ' + e; } };
+features(); window.__spike = { R, runAll, summarize };
+</script></body></html>

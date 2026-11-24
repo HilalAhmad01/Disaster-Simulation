@@ -517,6 +517,11 @@ const STEPS=[
       pop(null);$('aSend').click();await sleep(300);$('lSim').click();await sleep(1500);say('Twenty SOS calls arrive','A ring means a call is waiting for help',5200);await sleep(4000)}},
   {t:'Optimise all teams',s:'One plan for every call',go:async()=>{await post('/api/live/speed',{speed:30});LIVE.speed=30;pop('dOptB',true);await optPreview();say('One plan for every call','Compared with answering them one at a time',5200);await sleep(4800);if($('oGo'))await optApply();await sleep(500);dispOpen(true);
       say('Teams are on the way','They follow routes that avoid blocked streets, and phones see them coming',6500);await sleep(6500)}},
+  {t:'Send in a drone',s:'A simulated drone scouts the worst blocks',go:async()=>{
+      try{const r=await post('/api/drone/start');if(r.ok){const j=await r.json(),d=j.snapshot.fleet.find(x=>x.status==='ready');if(d){await post('/api/live/speed',{speed:30});LIVE.speed=30;await post('/api/drone/drones/'+d.id+'/launch')}}}catch(e){}
+      const b=document.getElementById('drBtn');if(b)b.classList.add('on');
+      say('A simulated drone scouts the worst blocks','It ranks blocks by people at risk per watt-hour, then reports what it sees',6500);await sleep(6800);
+      say('Open the Drone console','Watch it fly, pair a tablet, confirm sightings, compare the updated picture',6000);await sleep(6200);if(b)b.classList.remove('on')}},
   {t:'What else could fail',s:'Fire, gas, power, bridges, aftershock',go:async()=>{tab('map');$('ovSec').open=true;if(!$('casChk').checked){$('casChk').checked=true;await $('casChk').onchange()}
       $('casT').value=0;$('casPlay').click();say('Fires spread through dense blocks','Power cuts and bridge failures are shown too',5200);await sleep(7500);stopCasPlay();$('aftBtn').click();await sleep(2600)}},
   {t:'Compare scenarios',s:'M6.5 against M7.5',go:async()=>{openCompare('mag');await sleep(7500);if(CM)CM._close()}},
